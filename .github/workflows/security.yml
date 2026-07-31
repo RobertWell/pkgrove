@@ -28,11 +28,16 @@ jobs:
 
       # Pinned binary, invoked directly (no wrapper action): identical to the
       # locally-verified commands, and failures are debuggable from the run.
-      - name: Install Trivy v0.54.1
+      - name: Install Trivy v0.71.2
         run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-            | sh -s -- -b "$RUNNER_TEMP/bin" v0.54.1
+          # immutable release-asset URL (the contrib/install.sh path on the
+          # main branch proved unstable — failed in CI)
+          mkdir -p "$RUNNER_TEMP/bin"
+          curl -sfL -o "$RUNNER_TEMP/trivy.tgz" \
+            https://github.com/aquasecurity/trivy/releases/download/v0.71.2/trivy_0.71.2_Linux-64bit.tar.gz
+          tar -xzf "$RUNNER_TEMP/trivy.tgz" -C "$RUNNER_TEMP/bin" trivy
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/bin/trivy" --version
 
       - name: Blocking scan (HIGH/CRITICAL fail the gate)
         run: |
