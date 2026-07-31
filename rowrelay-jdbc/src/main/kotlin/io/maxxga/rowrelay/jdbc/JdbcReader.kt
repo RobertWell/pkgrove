@@ -34,8 +34,28 @@ object JdbcReader {
     }
 
     /**
-     * Open a streaming read. [params] bind positionally (1-based order).
-     * The returned stream exposes [RowStream.schema] immediately.
+     * Open a streaming read with NAMED parameters (`:user_name`) — the
+     * recommended form (HEL-119). The SQL is compiled internally to JDBC
+     * placeholders; values are never interpolated or logged. Missing names
+     * throw [NamedSql.MissingParametersException] listing exactly what is
+     * absent; unused entries follow [unusedPolicy].
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun open(connection: Connection, sql: String, namedParams: Map<String, Any?>,
+             options: ReadOptions = ReadOptions(),
+             unusedPolicy: NamedSql.UnusedParamPolicy = NamedSql.UnusedParamPolicy.WARN): RowStream {
+        val named = NamedSql.parse(sql)
+        val warnings = mutableListOf<DataWarning>()
+        val values = named.bind(namedParams, unusedPolicy) { warnings += it }
+        return open(connection, named.sql, values, options).also { stream ->
+            warnings.forEach(stream::addWarning)
+        }
+    }
+
+    /**
+     * Open a streaming read with positional [params] (1-based order) — the
+     * low-level compatibility form; prefer the named overload.
      */
     @JvmStatic
     @JvmOverloads
@@ -64,6 +84,8 @@ object JdbcReader {
 
         private val warningsList = mutableListOf<DataWarning>()
         val warnings: List<DataWarning> get() = warningsList.toList()
+
+        internal fun addWarning(w: DataWarning) { warningsList += w }
 
         var rowsRead: Long = 0
             private set

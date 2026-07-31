@@ -108,6 +108,34 @@ val report = Transfer.run(
 check(report.completed && report.rowsAffected == 25L)
 ```
 
+Named parameters and named mapping (the recommended transfer form — compiled
+in CI, see `NamedMappingTest` and `OracleTransferIT`):
+
+```kotlin
+// :user_name style named parameters — colons in literals/comments/casts are
+// understood; missing names are rejected BEFORE execution, listed exactly.
+val report = Transfer.run(
+    oracle, """
+        SELECT * FROM app_user
+        WHERE user_name = :user_name AND updated_at >= :updated_after
+    """.trimIndent(),
+    mapOf("user_name" to "ann", "updated_after" to since),
+    duck, DuckDbDialect, "users",
+    Transfer.Options(
+        sourceValueReader = OracleValueReader(),           // oracle.sql.* normalized
+        mapping = Mapping.build {
+            "source_user" mapsTo "user_name"               // rename by NAME
+            "source_display" mapsTo "display_name"
+            omit("internal_flag")                          // target default applies
+            constant("origin", "oracle-prod")              // same value every row
+        },
+        upsertKeys = listOf("user_name")))                 // explicit MERGE/ON CONFLICT
+```
+
+Values land by **name**, never by SELECT order — reordering the source query
+cannot change the target mapping. The resolved plan is inspectable:
+`mapping.resolve(schema)` returns a `MappingPlan` you can assert on.
+
 ## Quick start (Java)
 
 Compiled in CI — see `integration-tests/.../JavaConsumerExample.java`.
@@ -131,12 +159,19 @@ try (JdbcReader.RowStream rows =
 | `commitPolicy` | `JdbcBatchWriter.WriteOptions` | `AllOrNothing` | or `PerChunk(n)` chunked commits with resume info |
 | `mode` | `Transfer.Options` | `CREATE` | `CREATE_OR_REPLACE` / `APPEND` / `TEMPORARY` / `FAIL_IF_EXISTS` |
 | `conversionPolicy` | `Transfer.Options` | `REJECT` | `STRINGIFY` / `SKIP` — always warn, never silent |
+| `mapping` | `Transfer.Options` | identity | named renames / constants / omissions (`Mapping.build`) |
+| `upsertKeys` | `Transfer.Options` | off | explicit named-key upsert (Oracle MERGE / DuckDB ON CONFLICT; keys need target uniqueness) |
+| `unusedPolicy` | named reads | `WARN` | `REJECT` / `IGNORE` for bind-map entries the SQL never uses |
 | `readBatchSize` | `Transfer.Options` | 1000 | rows per in-flight batch (bounded memory) |
 
 ## Error handling
 
 - Unsafe runtime identifiers → `Identifiers.UnsafeIdentifierException`
   (the raw name is never echoed into messages).
+- Missing named parameters → `NamedSql.MissingParametersException` listing the
+  exact absent names (values are never logged or interpolated).
+- Bad mappings (unknown source, duplicate target, double-mapped source) →
+  `Mapping.MappingException` naming the offending columns, before any write.
 - Unrepresentable types under `REJECT` → `ConversionException` naming the column.
 - Failed batch writes → `JdbcBatchWriter.BatchWriteException` carrying an
   `OperationReport` with committed row count, failed batch index, and row range.

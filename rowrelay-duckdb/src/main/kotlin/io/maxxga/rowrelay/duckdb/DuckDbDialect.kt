@@ -46,6 +46,21 @@ object DuckDbDialect : SqlDialect {
         }
     }
 
+    /** ON CONFLICT upsert — requires a PK/unique constraint on [keyColumns]. */
+    override fun upsertSql(table: String, schema: io.maxxga.rowrelay.core.Schema, keyColumns: List<String>): String {
+        val cols = schema.columns.joinToString(", ") { quoteIdent(it.name, "column") }
+        val marks = schema.columns.joinToString(", ") { "?" }
+        val keys = keyColumns.joinToString(", ") { quoteIdent(schema[it].name, "key column") }
+        val keyNorm = keyColumns.map { it.lowercase() }.toSet()
+        val updates = schema.columns.filter { it.name.lowercase() !in keyNorm }
+            .joinToString(", ") {
+                val q = quoteIdent(it.name, "column")
+                "$q = EXCLUDED.$q"
+            }
+        return "INSERT INTO ${quoteIdent(table, "table")} ($cols) VALUES ($marks) " +
+               "ON CONFLICT ($keys) DO UPDATE SET $updates"
+    }
+
     /** DuckDB's JDBC driver refuses some java.time binds; java.sql works. */
     override fun bindValue(value: Any?, column: Column): Any? = when (value) {
         is java.time.LocalDateTime -> java.sql.Timestamp.valueOf(value)

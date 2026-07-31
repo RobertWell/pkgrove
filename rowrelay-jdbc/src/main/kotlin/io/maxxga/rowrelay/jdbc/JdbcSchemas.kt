@@ -16,10 +16,19 @@ object JdbcSchemas {
     fun fromMetaData(meta: ResultSetMetaData): Schema {
         val cols = (1..meta.columnCount).map { i ->
             val jdbcType = meta.getColumnType(i)
+            val kind = kindOf(jdbcType)
             Column(
                 name = meta.getColumnLabel(i),
-                kind = kindOf(jdbcType),
-                typeName = meta.getColumnTypeName(i) ?: "UNKNOWN",
+                kind = kind,
+                // TEMPORAL columns take the JDBC-STANDARD name derived from the
+                // type CODE, not the vendor string: Oracle names its
+                // datetime-valued DATE columns "DATE" while reporting code 93
+                // (TIMESTAMP) — trusting the vendor name made targets create
+                // date-only columns and silently drop the time component
+                // (live-Oracle-proven). Other kinds keep the vendor name as
+                // informational context.
+                typeName = if (kind == ValueKind.TEMPORAL) temporalName(jdbcType)
+                           else meta.getColumnTypeName(i) ?: "UNKNOWN",
                 nullable = when (meta.isNullable(i)) {
                     ResultSetMetaData.columnNoNulls -> false
                     ResultSetMetaData.columnNullable -> true
@@ -28,7 +37,8 @@ object JdbcSchemas {
                 precision = meta.getPrecision(i).takeIf { it > 0 },
                 scale = meta.getScale(i).takeIf { jdbcType.isNumericType() },
                 timeZoned = when (jdbcType) {
-                    Types.TIMESTAMP_WITH_TIMEZONE, Types.TIME_WITH_TIMEZONE -> true
+                    Types.TIMESTAMP_WITH_TIMEZONE, Types.TIME_WITH_TIMEZONE,
+                    ORACLE_TIMESTAMPTZ, ORACLE_TIMESTAMPLTZ -> true
                     Types.TIMESTAMP, Types.TIME, Types.DATE -> false
                     else -> null
                 },
@@ -37,7 +47,17 @@ object JdbcSchemas {
         return Schema(cols)
     }
 
+    // Oracle's driver reports these VENDOR codes instead of the JDBC-standard
+    // constants (proven by the live-Oracle integration suite) — without them a
+    // TIMESTAMP WITH TIME ZONE column classifies as OTHER and gets rejected.
+    private const val ORACLE_TIMESTAMPTZ = -101   // oracle.jdbc.OracleTypes.TIMESTAMPTZ
+    private const val ORACLE_TIMESTAMPLTZ = -102  // oracle.jdbc.OracleTypes.TIMESTAMPLTZ
+    private const val ORACLE_BINARY_FLOAT = 100   // oracle.jdbc.OracleTypes.BINARY_FLOAT
+    private const val ORACLE_BINARY_DOUBLE = 101  // oracle.jdbc.OracleTypes.BINARY_DOUBLE
+
     fun kindOf(jdbcType: Int): ValueKind = when (jdbcType) {
+        ORACLE_TIMESTAMPTZ, ORACLE_TIMESTAMPLTZ -> ValueKind.TEMPORAL
+        ORACLE_BINARY_FLOAT, ORACLE_BINARY_DOUBLE -> ValueKind.NUMERIC
         Types.CHAR, Types.VARCHAR, Types.LONGVARCHAR,
         Types.NCHAR, Types.NVARCHAR, Types.LONGNVARCHAR,
         Types.CLOB, Types.NCLOB -> ValueKind.TEXT
@@ -58,4 +78,13 @@ object JdbcSchemas {
 
     private fun Int.isNumericType(): Boolean =
         this == Types.NUMERIC || this == Types.DECIMAL
+
+    private fun temporalName(jdbcType: Int): String = when (jdbcType) {
+        Types.DATE -> "DATE"
+        Types.TIME -> "TIME"
+        Types.TIME_WITH_TIMEZONE -> "TIME WITH TIME ZONE"
+        Types.TIMESTAMP_WITH_TIMEZONE, ORACLE_TIMESTAMPTZ, ORACLE_TIMESTAMPLTZ ->
+            "TIMESTAMP WITH TIME ZONE"
+        else -> "TIMESTAMP"
+    }
 }

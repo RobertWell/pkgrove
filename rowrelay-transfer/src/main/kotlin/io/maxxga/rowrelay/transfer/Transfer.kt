@@ -32,12 +32,35 @@ object Transfer {
         val commitPolicy: JdbcBatchWriter.CommitPolicy = JdbcBatchWriter.CommitPolicy.AllOrNothing,
         val cancelToken: CancelToken = CancelToken.none(),
         val sourceValueReader: ValueReader = ValueReader.DEFAULT,
+        /** Named source-to-target column mapping; identity by default. */
+        val mapping: Mapping = Mapping.IDENTITY,
+        /** Explicit named key columns switch the write to UPSERT (HEL-119);
+         *  null (default) = plain batch insert. Requires target uniqueness on
+         *  the keys where the dialect needs it, and usually APPEND mode. */
+        val upsertKeys: List<String>? = null,
         /** (batchIndex, rowsWritten) — progress without row values (log-safe). */
         val onProgress: ((Int, Long) -> Unit)? = null,
     )
 
     /**
-     * Run one transfer. The caller owns both connections. Returns an honest
+     * Run one transfer with NAMED source parameters (`:user_name`) — the
+     * recommended form. See [NamedSql] for parsing/missing-name semantics.
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun run(source: Connection, sourceSql: String, namedParams: Map<String, Any?>,
+            target: Connection, targetDialect: SqlDialect, targetTable: String,
+            options: Options = Options()): OperationReport {
+        val named = io.maxxga.rowrelay.jdbc.NamedSql.parse(sourceSql)
+        val preWarnings = mutableListOf<DataWarning>()
+        val values = named.bind(namedParams) { preWarnings += it }
+        return runPositional(source, named.sql, values, target, targetDialect,
+                             targetTable, options, preWarnings)
+    }
+
+    /**
+     * Positional-parameter form — low-level compatibility; prefer the named
+     * overload. The caller owns both connections. Returns an honest
      * [OperationReport]; failures throw with the partial report attached
      * (see [JdbcBatchWriter.BatchWriteException]).
      */
@@ -45,32 +68,57 @@ object Transfer {
     @JvmOverloads
     fun run(source: Connection, sourceSql: String, sourceParams: List<Any?> = emptyList(),
             target: Connection, targetDialect: SqlDialect, targetTable: String,
-            options: Options = Options()): OperationReport {
-        val warnings = mutableListOf<DataWarning>()
+            options: Options = Options()): OperationReport =
+        runPositional(source, sourceSql, sourceParams, target, targetDialect,
+                      targetTable, options, emptyList())
+
+    private fun runPositional(source: Connection, sourceSql: String, sourceParams: List<Any?>,
+                              target: Connection, targetDialect: SqlDialect, targetTable: String,
+                              options: Options, preWarnings: List<DataWarning>): OperationReport {
+        val warnings = preWarnings.toMutableList()
         JdbcReader.open(
             source, sourceSql, sourceParams,
             JdbcReader.ReadOptions(fetchSize = options.fetchSize,
                                    cancelToken = options.cancelToken,
                                    valueReader = options.sourceValueReader)).use { stream ->
-            // 1. schema: inferred from the source, adapted per policy
+            // 1. resolve the NAMED mapping plan against the discovered source
+            //    schema (rejects unknown/duplicate/ambiguous names BEFORE any
+            //    write), then adapt the target schema per conversion policy.
+            val plan = options.mapping.resolve(stream.schema)
             val effective = targetDialect.adaptSchema(
-                stream.schema, options.conversionPolicy) { warnings += it }
-            val keptIndexes = effective.columns.map { stream.schema.indexOf(it.name) }
+                plan.targetSchema, options.conversionPolicy) { warnings += it }
+            val keptSources = effective.columns.map { c ->
+                plan.sources[plan.targetSchema.indexOf(c.name)]
+            }
 
             // 2. establish the target table per mode
             establishTarget(target, targetDialect, targetTable, effective, options.mode)
 
-            // 3. stream: project + bind-adapt each batch, hand to the writer
-            val insert = targetDialect.insertSql(targetTable, effective)
+            // 3. insert or explicit named-key upsert
+            val dml = options.upsertKeys?.let { keys ->
+                val missing = keys.filter { !effective.contains(it) }
+                require(missing.isEmpty()) {
+                    "upsert key columns not present in the target schema: ${missing.joinToString(", ")}"
+                }
+                targetDialect.upsertSql(targetTable, effective, keys)
+                    ?: throw UnsupportedOperationException(
+                        "${targetDialect.name} has no upsert support")
+            } ?: targetDialect.insertSql(targetTable, effective)
+
+            // 4. stream: map by NAME + bind-adapt each batch, hand to the writer
             val outBatches = stream.batches(options.readBatchSize).map { batch ->
                 RowBatch(effective, batch.rows.map { row ->
-                    Row(effective, keptIndexes.mapIndexed { out, src ->
-                        targetDialect.bindValue(row[src], effective[out])
+                    Row(effective, keptSources.mapIndexed { out, src ->
+                        val raw = when (src) {
+                            is Mapping.Source.FromColumn -> row[src.index]
+                            is Mapping.Source.Constant -> src.value
+                        }
+                        targetDialect.bindValue(raw, effective[out])
                     })
                 })
             }
             val report = JdbcBatchWriter.write(
-                target, insert, outBatches,
+                target, dml, outBatches,
                 JdbcBatchWriter.WriteOptions(commitPolicy = options.commitPolicy,
                                              cancelToken = options.cancelToken,
                                              onProgress = options.onProgress))

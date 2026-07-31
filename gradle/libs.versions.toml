@@ -6,6 +6,7 @@ jdbi = "3.42.0"
 duckdb = "1.1.3"
 ojdbc = "23.3.0.23.09"
 junit = "5.10.2"
+testcontainers = "1.21.4"
 
 [libraries]
 jdbi3-core = { module = "org.jdbi:jdbi3-core", version.ref = "jdbi" }
@@ -13,6 +14,8 @@ duckdb-jdbc = { module = "org.duckdb:duckdb_jdbc", version.ref = "duckdb" }
 ojdbc11 = { module = "com.oracle.database.jdbc:ojdbc11", version.ref = "ojdbc" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
 junit-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+testcontainers-oracle = { module = "org.testcontainers:oracle-free", version.ref = "testcontainers" }
+testcontainers-junit = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

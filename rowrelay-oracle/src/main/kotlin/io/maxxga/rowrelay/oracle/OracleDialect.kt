@@ -52,6 +52,31 @@ object OracleDialect : SqlDialect {
         ValueKind.OTHER -> null
     }
 
+    /** Oracle folds unquoted identifiers to UPPERCASE; matching that before
+     *  quoting is the deterministic policy that makes generated DDL/DML hit
+     *  objects created without quotes (the overwhelmingly common case). */
+    override fun identifierCase(name: String): String = name.uppercase()
+
+    /** MERGE-based upsert. Binds one `?` per schema column via the dual
+     *  subquery, in schema order — identical bind shape to insertSql. */
+    override fun upsertSql(table: String, schema: io.maxxga.rowrelay.core.Schema,
+                           keyColumns: List<String>): String {
+        fun q(name: String) = quoteIdent(name, "column")
+        val srcSelect = schema.columns.joinToString(", ") { "? AS ${q(it.name)}" }
+        val keyNorm = keyColumns.map { it.lowercase() }.toSet()
+        val on = keyColumns.joinToString(" AND ") {
+            val k = q(schema[it].name); "t.$k = s.$k"
+        }
+        val nonKeys = schema.columns.filter { it.name.lowercase() !in keyNorm }
+        require(nonKeys.isNotEmpty()) { "upsert needs at least one non-key column" }
+        val updates = nonKeys.joinToString(", ") { "t.${q(it.name)} = s.${q(it.name)}" }
+        val insertCols = schema.columns.joinToString(", ") { q(it.name) }
+        val insertVals = schema.columns.joinToString(", ") { "s.${q(it.name)}" }
+        return "MERGE INTO ${quoteIdent(table, "table")} t USING (SELECT $srcSelect FROM dual) s ON ($on) " +
+               "WHEN MATCHED THEN UPDATE SET $updates " +
+               "WHEN NOT MATCHED THEN INSERT ($insertCols) VALUES ($insertVals)"
+    }
+
     override fun bindValue(value: Any?, column: Column): Any? = when (value) {
         // ojdbc handles java.time directly since 21c drivers, but Timestamp is
         // the universally safe form (matches the AuditPatchX binding fix).

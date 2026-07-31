@@ -61,9 +61,11 @@ class OracleDialectTest {
         val schema = Schema(listOf(
             Column("id", ValueKind.NUMERIC, "NUMBER", precision = 10, scale = 0),
             Column("name", ValueKind.TEXT, "VARCHAR2", precision = 50)))
+        // Oracle policy: identifiers are UPPERCASED then quoted, so generated
+        // SQL matches objects created without quotes (live-Oracle-proven).
         val ddl = OracleDialect.createTableDdl("t_dest", schema, SqlDialect.TargetMode.CREATE)
-        assertEquals("CREATE TABLE \"t_dest\" (\"id\" NUMBER(10), \"name\" VARCHAR2(50 CHAR))", ddl)
-        assertEquals("INSERT INTO \"t_dest\" (\"id\", \"name\") VALUES (?, ?)",
+        assertEquals("CREATE TABLE \"T_DEST\" (\"ID\" NUMBER(10), \"NAME\" VARCHAR2(50 CHAR))", ddl)
+        assertEquals("INSERT INTO \"T_DEST\" (\"ID\", \"NAME\") VALUES (?, ?)",
                      OracleDialect.insertSql("t_dest", schema))
         assertThrows(io.maxxga.rowrelay.core.Identifiers.UnsafeIdentifierException::class.java) {
             OracleDialect.createTableDdl("t; DROP TABLE x", schema, SqlDialect.TargetMode.CREATE)

@@ -5,6 +5,31 @@ All notable changes to RowRelay. Pre-stable: breaking changes may occur in any
 
 ## 0.1.0-SNAPSHOT (unreleased)
 
+HEL-119 named transfer (added after the initial bootstrap):
+
+- `NamedSql` (rowrelay-jdbc): `:user_name` parameters for the direct JDBC
+  path — state-aware parsing (literals/quoted identifiers/comments/`::`),
+  repeated names, exact missing-name rejection, unused-parameter policies;
+  positional binding remains as the low-level compatibility form.
+- `Mapping` / `MappingPlan` (rowrelay-transfer): named source-to-target
+  mapping with renames, constants, omissions; case-insensitive, validated
+  before writing, order-independent, inspectable plan.
+- Explicit named-key upsert: `Transfer.Options.upsertKeys` → Oracle `MERGE` /
+  DuckDB `ON CONFLICT` (target uniqueness on keys required).
+- Three defects caught BY the live-Oracle suite and fixed:
+  Oracle vendor type codes (-101/-102 TZ timestamps, 100/101 binary
+  float/double) now classify correctly; a deterministic identifier-case
+  policy (`SqlDialect.identifierCase`, Oracle = uppercase-then-quote) makes
+  generated DDL/DML match unquoted-created objects; temporal columns take
+  JDBC-standard type names from the type CODE so Oracle's datetime-valued
+  DATE columns cannot silently lose their time component in a date-only
+  target.
+- Live-Oracle integration suite (testcontainers, auto-skipped without
+  Docker): both directions, both access paths, type fidelity incl.
+  NVARCHAR2 unicode, CLOB with literal colons, BLOB/RAW bytes, TZ
+  timestamps, and all-null rows.
+
+
 Initial capability set, extracted from production code in AuditPatchX and
 QuerySkiff (see the HEL-120 pilot — behavior parity proven by the consumer's
 own integration suite, 135/135):
