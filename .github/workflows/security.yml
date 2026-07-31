@@ -1,0 +1,97 @@
+# RowRelay security gates (HEL-124): CVE scan over the LOCKED dependency graph,
+# SBOM generation, and the exception-expiry policy. Runs on every push/PR that
+# can change exposure, on a weekly schedule (new CVEs without code changes),
+# and as a required dependency of the publish workflow.
+name: security
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 3 * * 1"   # weekly Monday 03:17 UTC
+  workflow_call:            # the publish workflow gates on this
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  cve-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Blocking rule (§3): CRITICAL/HIGH (CVSS >= 7 class) fail the job.
+      # Scanner or DB failure fails the job too (no silent pass) — trivy exits
+      # non-zero on execution errors independent of findings.
+      - name: Trivy — blocking scan (HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          format: sarif
+          output: trivy-blocking.sarif
+          trivyignores: ""
+        env:
+          TRIVY_IGNOREFILE: .trivyignore.yaml
+
+      # Reporting rule (§3): MEDIUM/LOW/UNKNOWN stay visible, never gate.
+      - name: Trivy — full-severity report (non-blocking)
+        if: always()
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          exit-code: "0"
+          format: json
+          output: trivy-full.json
+        env:
+          TRIVY_IGNOREFILE: .trivyignore.yaml
+
+      - name: Human-readable report
+        if: always()
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          exit-code: "0"
+          format: table
+          output: trivy-full.txt
+        env:
+          TRIVY_IGNOREFILE: .trivyignore.yaml
+
+      - name: Upload SARIF to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-blocking.sarif
+
+      - name: Retain reports (also on failure)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cve-reports
+          path: |
+            trivy-blocking.sarif
+            trivy-full.json
+            trivy-full.txt
+
+  sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v3
+      - name: Generate CycloneDX SBOM from the resolved graph
+        run: ./gradlew cyclonedxBom
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: build/sbom/

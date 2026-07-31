@@ -6,6 +6,17 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     alias(libs.plugins.kotlin.jvm) apply false
     alias(libs.plugins.dokka) apply false
+    // HEL-124 §7: SBOM of the actual resolved dependency graph (CycloneDX)
+    alias(libs.plugins.cyclonedx)
+}
+
+// Aggregate SBOM over all publishable modules; runtime vs test scopes are
+// distinguished by CycloneDX component scopes in the output.
+tasks.cyclonedxBom {
+    setIncludeConfigs(listOf("runtimeClasspath"))
+    setProjectType("library")
+    setDestination(project.file("build/sbom"))
+    setOutputFormat("all")   // JSON + XML
 }
 
 allprojects {
@@ -19,6 +30,13 @@ allprojects {
 
 subprojects {
     apply(plugin = "org.jetbrains.kotlin.jvm")
+
+    // HEL-124 §6: reproducibility — every configuration is locked; dynamic
+    // versions (1.+, ranges, changing modules) cannot resolve. Lockfiles are
+    // committed and are also the input the CVE scanner reads.
+    dependencyLocking {
+        lockAllConfigurations()
+    }
 
     extensions.configure<JavaPluginExtension> {
         toolchain {
@@ -43,6 +61,16 @@ subprojects {
 configure(subprojects.filter { it.name.startsWith("rowrelay-") }) {
     apply(plugin = "maven-publish")
     apply(plugin = "org.jetbrains.dokka")
+
+    // HEL-124: Dokka 1.9.x transitively pins jackson-databind 2.12.x, which
+    // carries HIGH/CRITICAL advisories. It is BUILD TOOLING (never on a
+    // consumer classpath), but the policy prefers an upgrade over an
+    // exception — force the fixed line on the dokka configurations only.
+    configurations.matching { it.name.startsWith("dokka") }.configureEach {
+        resolutionStrategy {
+            force("com.fasterxml.jackson.core:jackson-databind:2.18.8")
+        }
+    }
 
     extensions.configure<JavaPluginExtension> {
         withSourcesJar()

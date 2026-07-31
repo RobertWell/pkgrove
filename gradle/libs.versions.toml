@@ -18,5 +18,6 @@ testcontainers-oracle = { module = "org.testcontainers:oracle-free", version.ref
 testcontainers-junit = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
 
 [plugins]
+cyclonedx = { id = "org.cyclonedx.bom", version = "1.8.2" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }

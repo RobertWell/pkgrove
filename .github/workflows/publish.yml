@@ -13,6 +13,15 @@ permissions:
   packages: write
 
 jobs:
+  # HEL-124 §5: the SAME security gates run in-workflow — the publish job
+  # depends on them, and because workflow_dispatch triggers this whole
+  # workflow, a manual publish cannot bypass them either.
+  security:
+    uses: ./.github/workflows/security.yml
+    permissions:
+      contents: read
+      security-events: write
+
   gate:
     runs-on: ubuntu-latest
     steps:
@@ -25,7 +34,7 @@ jobs:
       - run: ./gradlew clean check
 
   publish:
-    needs: gate
+    needs: [gate, security]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -1,0 +1,16 @@
+# RowRelay CVE exception register (HEL-124 §4).
+#
+# POLICY: no silent or permanent suppressions. Every entry REQUIRES all of:
+#   - id:            the advisory/CVE identifier
+#   - paths/purls:   the affected artifact + dependency path (comment)
+#   - statement:     why it is not exploitable here / cannot yet be fixed,
+#                    the compensating control, the OWNER, the approval
+#                    reference (Linear issue), the creation date, and the
+#                    fixed version or remediation condition being awaited
+#   - expired_at:    a mandatory review/expiry date — Trivy re-raises the
+#                    finding after this date, so an expired exception FAILS
+#                    the gate by construction.
+# Broad wildcard suppressions are prohibited.
+#
+# vulnerabilities: []   # (no exceptions currently in force)
+vulnerabilities: []

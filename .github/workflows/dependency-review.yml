@@ -1,0 +1,17 @@
+# HEL-124 §2: PR dependency review — newly introduced HIGH/CRITICAL vulnerable
+# dependencies fail the check (package, version, advisory, path, and fixed
+# version are rendered in the PR). Configure this check as REQUIRED in branch
+# protection (repo setting — see docs/SECURITY.md owner checklist).
+name: dependency-review
+on: [pull_request]
+permissions:
+  contents: read
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
