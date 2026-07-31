@@ -34,6 +34,10 @@ object Transfer {
         val sourceValueReader: ValueReader = ValueReader.DEFAULT,
         /** Named source-to-target column mapping; identity by default. */
         val mapping: Mapping = Mapping.IDENTITY,
+        /** HEL-125: per-row transform applied AFTER reading, BEFORE mapping —
+         *  return null to filter the row out. Must preserve the row's schema
+         *  (renames/constants belong to [mapping]). */
+        val rowTransform: ((io.maxxga.rowrelay.core.Row) -> io.maxxga.rowrelay.core.Row?)? = null,
         /** Explicit named key columns switch the write to UPSERT (HEL-119);
          *  null (default) = plain batch insert. Requires target uniqueness on
          *  the keys where the dialect needs it, and usually APPEND mode. */
@@ -107,7 +111,13 @@ object Transfer {
 
             // 4. stream: map by NAME + bind-adapt each batch, hand to the writer
             val outBatches = stream.batches(options.readBatchSize).map { batch ->
-                RowBatch(effective, batch.rows.map { row ->
+                val sourceRows = options.rowTransform?.let { t ->
+                    batch.rows.mapNotNull { r ->
+                        t(r)?.also { require(it.schema == batch.schema) {
+                            "rowTransform must preserve the source schema" } }
+                    }
+                } ?: batch.rows
+                RowBatch(effective, sourceRows.map { row ->
                     Row(effective, keptSources.mapIndexed { out, src ->
                         val raw = when (src) {
                             is Mapping.Source.FromColumn -> row[src.index]

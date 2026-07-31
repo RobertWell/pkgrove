@@ -5,6 +5,18 @@ All notable changes to RowRelay. Pre-stable: breaking changes may occur in any
 
 ## 0.1.0-SNAPSHOT (unreleased)
 
+HEL-125 functional workflow API:
+
+- `Workflows.from(key, sql, named).filter{}.transform{}.to(key, dialect,
+  table)` — immutable definitions (keys + SQL + options; never connections/
+  credentials), executed via pluggable `WorkflowExecutor`s
+  (`SequentialExecutor`, bounded `ParallelExecutor` that respects HEL-128
+  lease budgets; branches never share connections). Per-flow results.
+  Apache River evaluated for the distributed slot and REJECTED (retired in
+  the Apache Attic; fails our own supply-chain bar) — the seam stays open
+  for a maintained backend. See docs/WORKFLOWS.md.
+
+
 HEL-128 resource ownership & lifecycle core:
 
 - `DatabaseKey` typed identities + `Databases` registry: application-owned
