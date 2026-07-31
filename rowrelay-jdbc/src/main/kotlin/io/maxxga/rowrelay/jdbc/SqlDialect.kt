@@ -18,6 +18,10 @@ interface SqlDialect {
     /** Dialect name for reports/errors ("duckdb", "oracle", ...). */
     val name: String
 
+    /** Capability report (HEL-126): whether JDBC savepoints work here.
+     *  Conservative default false; adapters opt in. */
+    val supportsSavepoints: Boolean get() = false
+
     /**
      * The dialect's DDL type for [column], or null when it has no faithful
      * representation (the transfer layer then applies the caller's

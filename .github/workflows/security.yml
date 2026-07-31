@@ -25,7 +25,7 @@ jobs:
       # Scanner or DB failure fails the job too (no silent pass) — trivy exits
       # non-zero on execution errors independent of findings.
       - name: Trivy — blocking scan (HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.33.1
         with:
           scan-type: fs
           scan-ref: .
@@ -33,14 +33,12 @@ jobs:
           exit-code: "1"
           format: sarif
           output: trivy-blocking.sarif
-          trivyignores: ""
-        env:
-          TRIVY_IGNOREFILE: .trivyignore.yaml
+          trivyignores: .trivyignore.yaml
 
       # Reporting rule (§3): MEDIUM/LOW/UNKNOWN stay visible, never gate.
       - name: Trivy — full-severity report (non-blocking)
         if: always()
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.33.1
         with:
           scan-type: fs
           scan-ref: .
@@ -48,12 +46,11 @@ jobs:
           exit-code: "0"
           format: json
           output: trivy-full.json
-        env:
-          TRIVY_IGNOREFILE: .trivyignore.yaml
+          trivyignores: .trivyignore.yaml
 
       - name: Human-readable report
         if: always()
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.33.1
         with:
           scan-type: fs
           scan-ref: .
@@ -61,8 +58,7 @@ jobs:
           exit-code: "0"
           format: table
           output: trivy-full.txt
-        env:
-          TRIVY_IGNOREFILE: .trivyignore.yaml
+          trivyignores: .trivyignore.yaml
 
       - name: Upload SARIF to code scanning
         if: always()

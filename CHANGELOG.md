@@ -5,6 +5,18 @@ All notable changes to RowRelay. Pre-stable: breaking changes may occur in any
 
 ## 0.1.0-SNAPSHOT (unreleased)
 
+HEL-126 selectable transaction policies:
+
+- Typed `TransactionPolicy` (Atomic / Chunked / SavepointPerBatch /
+  JoinExisting / AutoCommit) executed by `TransactionalWriter`, returning a
+  machine-readable `TransactionOutcome` (state, committed/rolled-back rows,
+  chunk ranges, checkpoint, `RetrySafety`) — partial completion cannot be
+  mistaken for success. Caller-owned transactions are never committed/closed;
+  unsupported combinations fail before any row is processed. Adapters report
+  `supportsSavepoints` (Oracle yes, DuckDB JDBC no). See docs/TRANSACTIONS.md
+  for the cross-database no-global-atomicity boundary and scheduler rules.
+
+
 HEL-119 named transfer (added after the initial bootstrap):
 
 - `NamedSql` (rowrelay-jdbc): `:user_name` parameters for the direct JDBC

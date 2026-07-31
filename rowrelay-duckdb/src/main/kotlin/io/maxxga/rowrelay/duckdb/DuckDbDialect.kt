@@ -13,6 +13,10 @@ object DuckDbDialect : SqlDialect {
 
     override val name: String = "duckdb"
 
+    /** DuckDB's JDBC driver does not implement java.sql savepoints — the
+     *  capability report keeps SavepointPerBatch failing EARLY here. */
+    override val supportsSavepoints: Boolean = false
+
     override fun typeFor(column: Column): String? = when (column.kind) {
         ValueKind.TEXT -> "VARCHAR"
         ValueKind.BOOLEAN -> "BOOLEAN"

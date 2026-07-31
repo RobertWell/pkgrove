@@ -17,6 +17,9 @@ object OracleDialect : SqlDialect {
 
     override val name: String = "oracle"
 
+    /** Oracle savepoints are first-class (HEL-126 SavepointPerBatch). */
+    override val supportsSavepoints: Boolean = true
+
     /** VARCHAR2 byte budget before we fall to CLOB. */
     private const val MAX_VARCHAR2 = 4000
 
