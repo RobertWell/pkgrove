@@ -19,56 +19,39 @@ jobs:
   cve-scan:
     runs-on: ubuntu-latest
     env:
-      # ghcr.io rate-limits anonymous DB pulls from shared runners (observed:
-      # all scan steps fail on DB download — a SECURE failure, but a flaky
-      # one). Prefer the public ECR mirror with ghcr as fallback, and cache
-      # the DB between steps/runs.
+      # ghcr.io rate-limits anonymous DB pulls from shared runners; prefer the
+      # ECR mirror with ghcr fallback. DB/download failure fails the job — a
+      # SECURE failure, never a silent pass.
       TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2
     steps:
       - uses: actions/checkout@v4
 
-      # Blocking rule (§3): CRITICAL/HIGH (CVSS >= 7 class) fail the job.
-      # Scanner or DB failure fails the job too (no silent pass) — trivy exits
-      # non-zero on execution errors independent of findings.
-      - name: Trivy — blocking scan (HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@v0.33.1
-        with:
-          scan-type: fs
-          scan-ref: .
-          severity: HIGH,CRITICAL
-          exit-code: "1"
-          format: sarif
-          output: trivy-blocking.sarif
-          trivyignores: .trivyignore.yaml
-          cache: "true"
+      # Pinned binary, invoked directly (no wrapper action): identical to the
+      # locally-verified commands, and failures are debuggable from the run.
+      - name: Install Trivy v0.54.1
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b "$RUNNER_TEMP/bin" v0.54.1
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
-      # Reporting rule (§3): MEDIUM/LOW/UNKNOWN stay visible, never gate.
-      - name: Trivy — full-severity report (non-blocking)
-        if: always()
-        uses: aquasecurity/trivy-action@v0.33.1
-        with:
-          scan-type: fs
-          scan-ref: .
-          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
-          exit-code: "0"
-          format: json
-          output: trivy-full.json
-          trivyignores: .trivyignore.yaml
+      - name: Blocking scan (HIGH/CRITICAL fail the gate)
+        run: |
+          trivy fs --scanners vuln --severity HIGH,CRITICAL --exit-code 1 \
+            --ignorefile .trivyignore.yaml \
+            --format sarif --output trivy-blocking.sarif .
 
-      - name: Human-readable report
+      - name: Full-severity report (non-blocking, always)
         if: always()
-        uses: aquasecurity/trivy-action@v0.33.1
-        with:
-          scan-type: fs
-          scan-ref: .
-          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
-          exit-code: "0"
-          format: table
-          output: trivy-full.txt
-          trivyignores: .trivyignore.yaml
+        run: |
+          trivy fs --scanners vuln --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+            --exit-code 0 --ignorefile .trivyignore.yaml \
+            --format json --output trivy-full.json . || true
+          trivy fs --scanners vuln --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+            --exit-code 0 --ignorefile .trivyignore.yaml \
+            --format table --output trivy-full.txt . || true
 
       - name: Upload SARIF to code scanning
-        if: always()
+        if: always() && hashFiles('trivy-blocking.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: trivy-blocking.sarif
@@ -78,6 +61,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cve-reports
+          if-no-files-found: ignore
           path: |
             trivy-blocking.sarif
             trivy-full.json
