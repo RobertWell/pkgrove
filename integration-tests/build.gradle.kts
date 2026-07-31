@@ -11,10 +11,13 @@ dependencies {
     testImplementation(project(":rowrelay-duckdb"))
     testImplementation(project(":rowrelay-transfer"))
     testImplementation(project(":rowrelay-oracle"))
+    testImplementation(project(":rowrelay-postgres"))
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.testcontainers.oracle)
     testImplementation(libs.testcontainers.junit)
     testRuntimeOnly(libs.junit.launcher)
     testRuntimeOnly(libs.duckdb.jdbc)
     testRuntimeOnly(libs.ojdbc11)
+    testRuntimeOnly(libs.postgres.jdbc)
+    testImplementation(libs.testcontainers.postgres)
 }

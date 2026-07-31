@@ -13,5 +13,6 @@ include(
     "rowrelay-oracle",
     "rowrelay-duckdb",
     "rowrelay-transfer",
+    "rowrelay-postgres",
     "integration-tests",
 )

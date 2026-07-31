@@ -5,6 +5,17 @@ All notable changes to RowRelay. Pre-stable: breaking changes may occur in any
 
 ## 0.1.0-SNAPSHOT (unreleased)
 
+HEL-127 PostgreSQL adapter + migration boundary:
+
+- `rowrelay-postgres`: PostgresDialect (lowercase-fold identifier policy —
+  the mirror of Oracle's; TEXT/BYTEA/NUMERIC/TIMESTAMPTZ type table; native
+  ON CONFLICT upsert; savepoints supported; driver compileOnly). Live
+  testcontainers suite: Postgres↔DuckDB both directions, named params,
+  rename mapping, upsert, savepoint-per-batch. docs/MIGRATION.md defines
+  the data-movement vs schema-evolution boundary (Flyway/Liquibase own
+  schema history; RowRelay owns bulk movement + verification).
+
+
 HEL-125 functional workflow API:
 
 - `Workflows.from(key, sql, named).filter{}.transform{}.to(key, dialect,
