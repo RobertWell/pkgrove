@@ -1,21 +1,27 @@
 # RowRelay publish (HEL-123 §5): SNAPSHOT publication to GitHub Packages,
-# HARD-GATED on the full check (the publish job depends on it and re-runs
-# `check` in-job as belt-and-braces — a normal CI run cannot bypass the gates).
-# Uses the workflow GITHUB_TOKEN only; no tokens in the repository.
+# HARD-GATED on the full check + the HEL-124 security gate. Uses the workflow
+# GITHUB_TOKEN only; no tokens in the repository.
+#
+# Trigger is DELIBERATE (tag push or manual dispatch), not every main commit:
+# GitHub Packages' Maven registry does NOT overwrite an existing version, so
+# re-publishing an unchanged SNAPSHOT from routine commits 409s. Publishing on
+# a version tag (or manual dispatch after a version bump) matches the issue's
+# versioned-release policy (0.1.0 -> 0.1.1-SNAPSHOT -> ...). Security still
+# runs on every push/PR via ci.yml + security.yml independently of this.
 name: publish
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    tags: ['v*']
 
 permissions:
   contents: read
   packages: write
 
 jobs:
-  # HEL-124 §5: the SAME security gates run in-workflow — the publish job
-  # depends on them, and because workflow_dispatch triggers this whole
-  # workflow, a manual publish cannot bypass them either.
+  # HEL-124 §5: the SAME security gate runs in-workflow — publish depends on it,
+  # and because workflow_dispatch triggers this whole workflow, a manual publish
+  # cannot bypass it either.
   security:
     uses: ./.github/workflows/security.yml
     permissions:
@@ -43,7 +49,8 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v3
-      - run: ./gradlew check publish
+      # `check` already ran (and passed) in the gate job; publish only deploys.
+      - run: ./gradlew publish
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

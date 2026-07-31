@@ -3,7 +3,16 @@
 All notable changes to RowRelay. Pre-stable: breaking changes may occur in any
 0.x release and are listed here with migration notes.
 
-## 0.1.0-SNAPSHOT (unreleased)
+## 0.1.1-SNAPSHOT (unreleased)
+
+- Version bump: GitHub Packages' Maven registry does not overwrite an existing
+  version, so the substantially-expanded content since the 0.1.0-SNAPSHOT
+  bootstrap (postgres adapter, transactions, workflows, resource lifecycle,
+  pgjdbc CVE fix) publishes under a fresh pre-stable version. Publishing is now
+  tag/dispatch-triggered.
+- Security: pgjdbc 42.7.3 -> 42.7.13 (CVE-2026-42198, CVE-2026-54291 HIGH).
+
+## 0.1.0-SNAPSHOT (bootstrap)
 
 HEL-127 PostgreSQL adapter + migration boundary:
 
