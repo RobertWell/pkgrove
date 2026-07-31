@@ -5,6 +5,20 @@ All notable changes to RowRelay. Pre-stable: breaking changes may occur in any
 
 ## 0.1.0-SNAPSHOT (unreleased)
 
+HEL-128 resource ownership & lifecycle core:
+
+- `DatabaseKey` typed identities + `Databases` registry: application-owned
+  pools (borrow/return, never close the pool) vs RowRelay-managed
+  (AutoCloseable, reverse-order, idempotent close); duplicate registrations
+  fail at build time. Per-key connection budgets (fair), acquisition
+  timeout with bounded actionable failure, cancellation-aware waiting,
+  uncertain-transaction invalidation (never returned as healthy),
+  deterministic key-ordered multi-database acquisition (deadlock
+  avoidance), vendor-neutral metrics, deterministic leak tests.
+  docs/RESOURCES.md defines the scoped model, streaming/backpressure rules,
+  DuckDB in-memory lifecycle, and distributed-worker payload rules.
+
+
 HEL-126 selectable transaction policies:
 
 - Typed `TransactionPolicy` (Atomic / Chunked / SavepointPerBatch /
