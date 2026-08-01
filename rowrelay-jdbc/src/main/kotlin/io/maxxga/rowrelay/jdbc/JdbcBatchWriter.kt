@@ -59,6 +59,7 @@ object JdbcBatchWriter {
         var batchIndex = -1
         var batchesDone = 0
         var chunkStartRow = 0L
+        var thrown: Throwable? = null
 
         fun elapsed() = (System.nanoTime() - start) / 1_000_000
 
@@ -109,19 +110,32 @@ object JdbcBatchWriter {
                 rowsAffected = rowsCommitted, batches = batchesDone,
                 elapsedMillis = elapsed(), completed = true, warnings = warnings.toList())
         } catch (e: BatchWriteException) {
+            thrown = e
             throw e
         } catch (e: Exception) {
-            // cancellation or infrastructure failure: roll back the open chunk
-            runCatching { connection.rollback() }
+            // cancellation or infrastructure failure: roll back the open chunk.
+            // A rollback that itself fails is surfaced (attached), never swallowed.
+            // (Whether cancellation should propagate AS cancellation rather than
+            // wrapped here — with its partial report carried — is a deliberate
+            // HEL-125 outcome-type decision, handled in that effort.)
+            val rollbackFailure = runCatching { connection.rollback() }.exceptionOrNull()
             val report = OperationReport(
                 rowsAffected = rowsCommitted, batches = batchesDone,
                 elapsedMillis = elapsed(), completed = false, warnings = warnings.toList(),
                 failedBatchIndex = if (batchIndex >= 0) batchIndex else null,
                 failedRowRange = if (rowsInOpenChunk > 0) chunkStartRow until (chunkStartRow + rowsInOpenChunk) else null,
             )
-            throw BatchWriteException("write aborted after $rowsCommitted committed rows", report, e)
+            val ex = BatchWriteException("write aborted after $rowsCommitted committed rows", report, e)
+            rollbackFailure?.let { ex.addSuppressed(it) }
+            thrown = ex
+            throw ex
         } finally {
-            runCatching { connection.autoCommit = previousAutoCommit }
+            // Restoring autoCommit is cleanup: attach a failure to the in-flight
+            // exception, or surface it on the normal-return path — never swallow.
+            val restoreFailure = runCatching { connection.autoCommit = previousAutoCommit }.exceptionOrNull()
+            if (restoreFailure != null) {
+                if (thrown != null) thrown.addSuppressed(restoreFailure) else throw restoreFailure
+            }
         }
     }
 }
