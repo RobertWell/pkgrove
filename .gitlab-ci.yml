@@ -56,9 +56,10 @@ verification-metadata:
 # registry dependency — PAT-free (public project => anonymous reads; the
 # publish authenticates with the ephemeral job token). Gated on the verify
 # stage, which runs the full test build under ENFORCED dependency verification.
-# GitLab's Maven registry accepts re-publication of a version, so a re-run of
-# an unchanged main is harmless; the version itself is immutable by policy
-# (no -SNAPSHOT — see the version guard in the GitHub publish workflow).
+# IMMUTABILITY: a version is published AT MOST ONCE — if the registry already
+# has it, the job skips (GitLab's Maven registry would otherwise accept a
+# re-publication, silently mutating the version as main moves — forbidden by
+# the release-version policy). Shipping new content requires a version bump.
 publish-registry:
   stage: publish
   image: maven:3.9-eclipse-temurin-21
@@ -78,4 +79,15 @@ publish-registry:
       - .gradle-home/caches
       - .gradle-home/wrapper
   script:
-    - ./gradlew --no-daemon publishAllPublicationsToGitLabLanRepository -x :integration-tests:test
+    # immutability guard: never re-publish an existing version
+    - |
+      VERSION=$(./gradlew --no-daemon -q :rowrelay-core:properties --property version | awk '/^version:/ {print $2}')
+      echo "resolved version: $VERSION"
+      case "$VERSION" in *-SNAPSHOT|*-dev*) echo "refusing to publish mutable version"; exit 1;; esac
+      CODE=$(curl -s -o /dev/null -w '%{http_code}' \
+        "$ROWRELAY_GITLAB_MAVEN_URL/io/maxxga/rowrelay/rowrelay-core/$VERSION/rowrelay-core-$VERSION.pom")
+      if [ "$CODE" = "200" ]; then
+        echo "version $VERSION already in the registry — immutable, skipping publish (bump the version to ship new content)"
+        exit 0
+      fi
+      ./gradlew --no-daemon publishAllPublicationsToGitLabLanRepository -x :integration-tests:test
