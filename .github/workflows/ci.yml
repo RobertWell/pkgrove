@@ -1,5 +1,9 @@
-# RowRelay CI (HEL-123): every push/PR runs the full check — unit + contract +
-# integration tests AND the compiled documentation examples.
+# RowRelay CI (HEL-123). Split into two jobs so each gets a full hosted runner:
+#  - `check`: unit + contract + module tests, dialect suites, and the compiled
+#    documentation examples (fast, deterministic).
+#  - `integration`: the Oracle + Postgres testcontainer suite on its OWN runner
+#    — the Oracle Free image (~5GB) is too heavy to share a 7GB runner with the
+#    rest of `clean check`, so it runs alone with the full resource budget.
 name: ci
 on:
   push:
@@ -16,4 +20,27 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v3
-      - run: ./gradlew clean check
+      - run: ./gradlew clean check -x :integration-tests:test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: check-reports
+          path: '**/build/reports/tests/**'
+          retention-days: 7
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v3
+      - run: ./gradlew :integration-tests:test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-reports
+          path: 'integration-tests/build/reports/tests/**'
+          retention-days: 7

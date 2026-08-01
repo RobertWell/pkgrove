@@ -58,3 +58,22 @@ fun <L, R> Choice<L, R>.rightOrNull(): R? = (this as? Choice.Right)?.value
 
 /** The Left value or null. */
 fun <L, R> Choice<L, R>.leftOrNull(): L? = (this as? Choice.Left)?.value
+
+/**
+ * HEL-167: route each element down the [Choice] path chosen by [router], into
+ * two independent buckets — the workflow-algebra split that lets `Left`/`Right`
+ * feed *different* downstream pipelines (e.g. rejected rows → a reject sink,
+ * accepted rows → the main sink). Pure and order-preserving within each bucket.
+ * Returns `(lefts, rights)`.
+ */
+inline fun <T, L, R> Iterable<T>.partitionByChoice(
+    router: (T) -> Choice<L, R>,
+): Pair<List<L>, List<R>> {
+    val lefts = ArrayList<L>()
+    val rights = ArrayList<R>()
+    for (item in this) when (val c = router(item)) {
+        is Choice.Left -> lefts += c.value
+        is Choice.Right -> rights += c.value
+    }
+    return lefts to rights
+}
