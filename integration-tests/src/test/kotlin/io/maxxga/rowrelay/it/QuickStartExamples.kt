@@ -134,4 +134,66 @@ class QuickStartExamples {
             }
         }
     }
+
+    // HEL-125: the canonical homepage example — the Relay DSL golden path.
+    // Pure transformation, defined apart from any I/O (unit-testable alone):
+    private fun normalizeCustomer(row: io.maxxga.rowrelay.core.Row): io.maxxga.rowrelay.core.Row =
+        io.maxxga.rowrelay.core.Row(row.schema, row.schema.columns.map { c ->
+            val v = row[c.name]
+            if (c.name.equals("symbol", true)) (v as String).lowercase() else v
+        })
+
+    @Test
+    fun `homepage golden path - relay transfer DSL with typed outcome`() {
+        val srcUrl = "jdbc:duckdb:${tempDir.resolve("r_s.db")}"
+        val dstUrl = "jdbc:duckdb:${tempDir.resolve("r_d.db")}"
+        demoDb(srcUrl)
+        // an upsert syncs into an EXISTING keyed table (schema-migration tool's job)
+        DriverManager.getConnection(dstUrl).use { c ->
+            c.createStatement().use {
+                it.execute("CREATE TABLE trades (id BIGINT PRIMARY KEY, ticker VARCHAR, price DOUBLE)")
+            }
+        }
+        // --- README: relay-golden-path ---
+        io.maxxga.rowrelay.transfer.Relay.build {
+            database(Source, ds(srcUrl), DuckDbDialect)      // configured ONCE, at startup
+            database(Target, ds(dstUrl), DuckDbDialect)
+        }.use { relay ->
+            val trades = relay.transfer("synchronize-trades") {
+                from(Source) {
+                    query("""
+                        select id, symbol, price
+                        from trades
+                        where price >= :floor
+                    """.trimIndent())
+                    bind("floor", 10.0)
+                }
+                transform(::normalizeCustomer)               // pure, unit-testable
+                to(Target, table = "trades") {
+                    rename("symbol", "ticker")               // mapping by NAME
+                    upsertBy("id")                           // idempotent identity
+                }
+            }
+
+            when (val outcome = relay.execute(trades)) {
+                is io.maxxga.rowrelay.transfer.TransferOutcome.Completed ->
+                    check(outcome.report.rowsAffected > 0)
+                is io.maxxga.rowrelay.transfer.TransferOutcome.Partial ->
+                    error("resume from ${outcome.checkpoint.committedRows}")
+                is io.maxxga.rowrelay.transfer.TransferOutcome.Rejected ->
+                    error("plan rejected: ${outcome.reason}")
+                is io.maxxga.rowrelay.transfer.TransferOutcome.Failed ->
+                    throw outcome.cause
+                is io.maxxga.rowrelay.transfer.TransferOutcome.Cancelled ->
+                    error("cancelled")
+            }
+        }
+        // --- end README ---
+        DriverManager.getConnection(dstUrl).use { c ->
+            c.createStatement().use { st ->
+                val rs = st.executeQuery("SELECT count(*) FROM \"trades\" WHERE \"ticker\" = lower(\"ticker\")")
+                rs.next(); assertTrue(rs.getLong(1) > 0)     // transform + rename applied
+            }
+        }
+    }
 }
