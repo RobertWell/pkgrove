@@ -83,6 +83,11 @@ subprojects {
 configure(subprojects.filter { it.name.startsWith("rowrelay-") }) {
     apply(plugin = "maven-publish")
     apply(plugin = "org.jetbrains.dokka")
+    // HEL-190: PGP signing for Maven Central. Gradle-core plugin (no new
+    // dependency → passes the supply-chain gate). GATED: only signs when an
+    // in-memory key is provided via env, so GitHub-Packages / GitLab / local
+    // publishes keep working unsigned. Central requires signed artifacts.
+    apply(plugin = "signing")
 
     // HEL-124: Dokka 1.9.x transitively pins jackson-databind 2.12.x, which
     // carries HIGH/CRITICAL advisories. It is BUILD TOOLING (never on a
@@ -114,6 +119,39 @@ configure(subprojects.filter { it.name.startsWith("rowrelay-") }) {
                     description.set("RowRelay — reusable Kotlin data library: " +
                                     "dynamic JDBC/JDBI data access and bidirectional batch transfer")
                     url.set("https://github.com/RobertWell/rowrelay")
+                    // HEL-190 Maven Central metadata. developers/scm/issueManagement
+                    // are known and complete. The LICENSE is an OWNER decision
+                    // (the repo LICENSE is still a placeholder) — the licenses
+                    // block is emitted only when the owner supplies the choice via
+                    // -Prowrelay.license.name / -Prowrelay.license.url, so a wrong
+                    // license can never ship. Central REQUIRES it; see docs/RELEASING.md.
+                    val licName = (findProperty("rowrelay.license.name") as String?)
+                    val licUrl = (findProperty("rowrelay.license.url") as String?)
+                    if (!licName.isNullOrBlank() && !licUrl.isNullOrBlank()) {
+                        licenses {
+                            license {
+                                name.set(licName)
+                                url.set(licUrl)
+                                distribution.set("repo")
+                            }
+                        }
+                    }
+                    developers {
+                        developer {
+                            id.set("RobertWell")
+                            name.set("RobertWell")
+                            url.set("https://github.com/RobertWell")
+                        }
+                    }
+                    scm {
+                        connection.set("scm:git:https://github.com/RobertWell/rowrelay.git")
+                        developerConnection.set("scm:git:ssh://git@github.com/RobertWell/rowrelay.git")
+                        url.set("https://github.com/RobertWell/rowrelay")
+                    }
+                    issueManagement {
+                        system.set("Linear")
+                        url.set("https://linear.app/hellostock")
+                    }
                 }
             }
         }
@@ -145,6 +183,38 @@ configure(subprojects.filter { it.name.startsWith("rowrelay-") }) {
                     authentication { create<HttpHeaderAuthentication>("header") }
                 }
             }
+            // HEL-190: Maven Central (public, tokenless CONSUMPTION). GATED on
+            // env like the others — only configured when the Central credentials
+            // are present (in CI, for a tagged release). MAVEN_CENTRAL_URL points
+            // at the OSSRH-compatible staging endpoint the owner's Central Portal
+            // namespace exposes; final release is promoted via the Portal. See
+            // docs/RELEASING.md. Requires PGP-signed artifacts (below).
+            val centralUrl = System.getenv("MAVEN_CENTRAL_URL")
+            val centralUser = System.getenv("MAVEN_CENTRAL_USERNAME")
+            if (!centralUrl.isNullOrBlank() && !centralUser.isNullOrBlank()) {
+                maven {
+                    name = "MavenCentral"
+                    url = uri(centralUrl)
+                    credentials {
+                        username = centralUser
+                        password = System.getenv("MAVEN_CENTRAL_PASSWORD")
+                    }
+                }
+            }
+        }
+    }
+
+    // HEL-190: sign publications for Maven Central. GATED — only required/active
+    // when SIGNING_KEY is provided (in-memory ASCII-armored PGP key + password
+    // via env, no keyring file in the repo). Without it, unsigned publishes to
+    // GitHub Packages / GitLab / mavenLocal keep working unchanged.
+    extensions.configure<SigningExtension> {
+        val signingKey = System.getenv("SIGNING_KEY")
+        val signingPassword = System.getenv("SIGNING_PASSWORD")
+        isRequired = !signingKey.isNullOrBlank()
+        if (isRequired) {
+            useInMemoryPgpKeys(signingKey, signingPassword)
+            sign(extensions.getByType<PublishingExtension>().publications["maven"])
         }
     }
 }
