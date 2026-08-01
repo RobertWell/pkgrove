@@ -168,6 +168,32 @@ retains every outcome, `FAIL_FAST` cancels them on the first failure.
 without conflating a business `Left` with an execution failure. The executor is
 pluggable — see `docs/adr/0001-workflow-executor-architecture.md`.
 
+## API tiers — pick the level you need
+
+RowRelay is layered; reach for the lowest tier that solves your problem, and
+you'll usually want the first.
+
+| Tier | Use | Key types |
+|---|---|---|
+| **Recommended** | Real ETL/reporting work | `Databases.build`, `Workflows.from(...).to(...)`, `Workflows.executeStructured`, `Choice`, `WorkflowOutcome`, `JdbiReader` |
+| **Advanced** | A single explicit transfer, or your own orchestration | `Transfer.run`, `Mapping`, `TransactionPolicy` + `TransactionalWriter`, `JdbcReader` |
+| **Low-level** | Building a new adapter, or legacy positional code | `JdbcBatchWriter`, `NamedSql`, `SqlDialect`, the `Row`/`Schema`/`RowBatch` primitives |
+
+The recommended tier keeps your code free of `Connection`, commit/rollback, and
+thread choreography. The lower tiers are fully supported but hand you more of the
+mechanics — use them deliberately, not by default.
+
+### Real-consumer evidence
+
+The goal is *less* application code, not a renamed abstraction. In the
+AuditPatchX pilot, the Oracle read path replaced hand-maintained
+`ResultSet`-normalization, CLOB-materialization, and per-type temporal-parsing
+helpers with a single `JdbiReader.open(...)` call producing `Schema`/`Row`
+values directly — the bespoke helpers were **deleted**, and the suite stayed
+green (135/0/3, byte-identical outcomes). RowRelay's rule: if adopting it
+doesn't remove consumer code and cognitive load, the abstraction isn't earning
+its place.
+
 ## Quick start (Java)
 
 Compiled in CI — see `integration-tests/.../JavaConsumerExample.java`.
