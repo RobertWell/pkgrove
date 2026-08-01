@@ -120,4 +120,10 @@ enum class TransactionState {
     /** Work was appended into a caller-owned transaction; its fate is the
      *  caller's commit/rollback. */
     PENDING_IN_CALLER_TRANSACTION,
+    /** A cleanup step (rollback) after a failure ITSELF failed, so the
+     *  transaction's final state could not be confirmed. The connection must be
+     *  treated as tainted (invalidated, not returned to a pool as healthy) and
+     *  a retry is unsafe. The triggering + cleanup failures are attached to the
+     *  thrown [TransactionWriteException] (cause + suppressed). */
+    UNCERTAIN,
 }

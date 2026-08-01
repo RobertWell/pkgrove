@@ -60,13 +60,17 @@ object PostgresDialect : SqlDialect {
         val marks = schema.columns.joinToString(", ") { "?" }
         val keys = keyColumns.joinToString(", ") { quoteIdent(schema[it].name, "key column") }
         val keyNorm = keyColumns.map { it.lowercase() }.toSet()
-        val updates = schema.columns.filter { it.name.lowercase() !in keyNorm }
-            .joinToString(", ") {
+        val nonKey = schema.columns.filter { it.name.lowercase() !in keyNorm }
+        // A table whose every column is a conflict key has nothing to update on
+        // conflict — `DO UPDATE SET <empty>` is invalid SQL, so degrade to the
+        // correct idempotent form: DO NOTHING (the row already exists as-is).
+        val conflict = if (nonKey.isEmpty()) "DO NOTHING"
+            else "DO UPDATE SET " + nonKey.joinToString(", ") {
                 val q = quoteIdent(it.name, "column")
                 "$q = EXCLUDED.$q"
             }
         return "INSERT INTO ${quoteIdent(table, "table")} ($cols) VALUES ($marks) " +
-               "ON CONFLICT ($keys) DO UPDATE SET $updates"
+               "ON CONFLICT ($keys) $conflict"
     }
 
     override fun bindValue(value: Any?, column: Column): Any? = when (value) {

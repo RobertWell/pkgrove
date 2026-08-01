@@ -109,6 +109,18 @@ class TransactionPolicyTest {
     }
 
     @Test
+    fun `savepoint per batch fails closed when no dialect is supplied to verify support`() {
+        // the public overload defaults dialect=null; the capability precheck
+        // must NOT be bypassable — an unverifiable adapter is rejected.
+        val ex = assertThrows(TransactionalWriter.UnsupportedPolicyException::class.java) {
+            TransactionalWriter.write(conn, "INSERT INTO t VALUES (?)",
+                rows(0L until 5L), TransactionPolicy.SavepointPerBatch)
+        }
+        assertTrue(ex.message!!.contains("requires a dialect"))
+        assertEquals(0L, count())   // rejected before any row
+    }
+
+    @Test
     fun `auto commit accounts partial completion exactly`() {
         val ex = assertThrows(TransactionWriteException::class.java) {
             TransactionalWriter.write(conn, "INSERT INTO t VALUES (?)",

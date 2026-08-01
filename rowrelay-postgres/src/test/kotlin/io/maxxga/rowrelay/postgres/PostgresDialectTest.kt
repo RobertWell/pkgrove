@@ -50,6 +50,17 @@ class PostgresDialectTest {
     }
 
     @Test
+    fun `key-only table degrades to ON CONFLICT DO NOTHING (not empty DO UPDATE SET)`() {
+        val schema = Schema(listOf(
+            Column("a", ValueKind.NUMERIC, "BIGINT", precision = 18),
+            Column("b", ValueKind.NUMERIC, "BIGINT", precision = 18)))
+        val sql = PostgresDialect.upsertSql("t", schema, listOf("a", "b"))
+        assertEquals("INSERT INTO \"t\" (\"a\", \"b\") VALUES (?, ?) " +
+                     "ON CONFLICT (\"a\", \"b\") DO NOTHING", sql)
+        assertTrue("DO UPDATE SET " !in sql)  // never an empty update list
+    }
+
+    @Test
     fun `capabilities`() {
         assertTrue(PostgresDialect.supportsSavepoints)
         assertEquals("postgres", PostgresDialect.name)

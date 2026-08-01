@@ -121,12 +121,18 @@ object TransactionalWriter {
     private fun savepoint(c: Connection, dml: String, batches: Sequence<RowBatch>,
                           policy: TransactionPolicy, dialect: SqlDialect?,
                           o: WriteOptions): TransactionOutcome {
-        if (dialect != null && !dialect.supportsSavepoints) throw UnsupportedPolicyException(
+        // Fail closed: SavepointPerBatch needs a dialect to VERIFY savepoint
+        // support. A null dialect can't be verified, so it is rejected rather
+        // than assumed-capable (the precheck must not be bypassable).
+        if (dialect == null) throw UnsupportedPolicyException(
+            "SavepointPerBatch requires a dialect to verify savepoint support")
+        if (!dialect.supportsSavepoints) throw UnsupportedPolicyException(
             "${dialect.name} does not support savepoints")
         val prevAuto = c.autoCommit
         c.autoCommit = false
         var staged = 0L
         var failed: ChunkRange? = null
+        var thrown: Throwable? = null
         try {
             c.prepareStatement(dml).use { st ->
                 for (batch in batches) {
@@ -160,14 +166,29 @@ object TransactionalWriter {
                     else -> RetrySafety.SAFE_NOTHING_COMMITTED
                 })
         } catch (e: Exception) {
-            runCatching { c.rollback() }
-            throw TransactionWriteException(
-                TransactionOutcome(TransactionState.ROLLED_BACK, policy,
+            // A rollback that itself fails leaves the transaction state
+            // UNCERTAIN — surface it (attached as suppressed), never swallow.
+            val rollbackFailure = runCatching { c.rollback() }.exceptionOrNull()
+            val clean = rollbackFailure == null
+            val ex = TransactionWriteException(
+                TransactionOutcome(
+                    if (clean) TransactionState.ROLLED_BACK else TransactionState.UNCERTAIN,
+                    policy,
                     committedRows = 0, rolledBackRows = staged, committedChunks = emptyList(),
                     failedChunk = failed, checkpoint = TransferCheckpoint(0),
-                    retrySafety = RetrySafety.SAFE_NOTHING_COMMITTED), e)
+                    // clean rollback → safe to retry; failed rollback → NOT safe.
+                    retrySafety = if (clean) RetrySafety.SAFE_NOTHING_COMMITTED
+                                  else RetrySafety.UNSAFE_PARTIAL_COMMITTED), e)
+            rollbackFailure?.let { ex.addSuppressed(it) }
+            thrown = ex
+            throw ex
         } finally {
-            runCatching { c.autoCommit = prevAuto }
+            // Restoring autoCommit is cleanup: attach a failure to the in-flight
+            // exception, or surface it on the normal-return path — do not hide it.
+            val restoreFailure = runCatching { c.autoCommit = prevAuto }.exceptionOrNull()
+            if (restoreFailure != null) {
+                if (thrown != null) thrown.addSuppressed(restoreFailure) else throw restoreFailure
+            }
         }
     }
 
@@ -177,6 +198,7 @@ object TransactionalWriter {
         val prevAuto = c.autoCommit
         c.autoCommit = true
         var committed = 0L
+        var thrown: Throwable? = null
         try {
             c.prepareStatement(dml).use { st ->
                 for (batch in batches) {
@@ -209,8 +231,14 @@ object TransactionalWriter {
                 committedChunks = listOf(ChunkRange(0, committed)),
                 failedChunk = null, checkpoint = TransferCheckpoint(committed),
                 retrySafety = RetrySafety.COMPLETE)
+        } catch (e: Throwable) {
+            thrown = e
+            throw e
         } finally {
-            runCatching { c.autoCommit = prevAuto }
+            val restoreFailure = runCatching { c.autoCommit = prevAuto }.exceptionOrNull()
+            if (restoreFailure != null) {
+                if (thrown != null) thrown.addSuppressed(restoreFailure) else throw restoreFailure
+            }
         }
     }
 

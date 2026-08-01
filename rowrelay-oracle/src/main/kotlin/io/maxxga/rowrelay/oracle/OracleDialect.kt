@@ -71,12 +71,16 @@ object OracleDialect : SqlDialect {
             val k = q(schema[it].name); "t.$k = s.$k"
         }
         val nonKeys = schema.columns.filter { it.name.lowercase() !in keyNorm }
-        require(nonKeys.isNotEmpty()) { "upsert needs at least one non-key column" }
-        val updates = nonKeys.joinToString(", ") { "t.${q(it.name)} = s.${q(it.name)}" }
         val insertCols = schema.columns.joinToString(", ") { q(it.name) }
         val insertVals = schema.columns.joinToString(", ") { "s.${q(it.name)}" }
-        return "MERGE INTO ${quoteIdent(table, "table")} t USING (SELECT $srcSelect FROM dual) s ON ($on) " +
-               "WHEN MATCHED THEN UPDATE SET $updates " +
+        val merge = "MERGE INTO ${quoteIdent(table, "table")} t USING (SELECT $srcSelect FROM dual) s ON ($on) "
+        // Key-only table: nothing to UPDATE on match, so emit an insert-only
+        // MERGE (WHEN NOT MATCHED only) = insert-if-absent, mirroring Postgres'
+        // ON CONFLICT DO NOTHING. WHEN MATCHED with an empty SET is invalid.
+        if (nonKeys.isEmpty())
+            return merge + "WHEN NOT MATCHED THEN INSERT ($insertCols) VALUES ($insertVals)"
+        val updates = nonKeys.joinToString(", ") { "t.${q(it.name)} = s.${q(it.name)}" }
+        return merge + "WHEN MATCHED THEN UPDATE SET $updates " +
                "WHEN NOT MATCHED THEN INSERT ($insertCols) VALUES ($insertVals)"
     }
 

@@ -90,4 +90,14 @@ class OracleDialectTest {
         assertTrue(!skipped.contains("weird"))
         assertEquals("skipped-column", warnings.single().code)
     }
+
+    @Test
+    fun `key-only table emits an insert-only MERGE (no empty UPDATE SET)`() {
+        val schema = Schema(listOf(
+            Column("a", ValueKind.NUMERIC, "NUMBER", precision = 18),
+            Column("b", ValueKind.NUMERIC, "NUMBER", precision = 18)))
+        val sql = OracleDialect.upsertSql("t", schema, listOf("a", "b"))
+        assertTrue("WHEN MATCHED" !in sql)         // nothing to update → no MATCHED clause
+        assertTrue("WHEN NOT MATCHED THEN INSERT" in sql)
+    }
 }
