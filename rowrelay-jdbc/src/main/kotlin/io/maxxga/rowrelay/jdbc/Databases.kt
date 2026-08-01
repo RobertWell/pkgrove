@@ -55,6 +55,7 @@ class Databases private constructor(
     ) {
         val budget = Semaphore(maxConnections, true)   // fair: documented ordering
         val active = AtomicLong(0)
+        val peak = AtomicLong(0)   // max concurrent leases seen
         val timedOut = AtomicLong(0)
         val discarded = AtomicLong(0)
         val closed = AtomicBoolean(false)
@@ -62,12 +63,13 @@ class Databases private constructor(
 
     /** Point-in-time resource metrics for one database identity (no vendor
      *  coupling — plain values the app forwards wherever it likes). */
-    data class Metrics(val key: String, val activeLeases: Long, val waiting: Int,
-                       val timedOutAcquisitions: Long, val discardedConnections: Long)
+    data class Metrics(val key: String, val activeLeases: Long, val maxConcurrentLeases: Long,
+                       val waiting: Int, val timedOutAcquisitions: Long,
+                       val discardedConnections: Long)
 
     fun metrics(): List<Metrics> = order.map { k ->
         val e = entries.getValue(k)
-        Metrics(k.keyName, e.active.get(), e.budget.queueLength,
+        Metrics(k.keyName, e.active.get(), e.peak.get(), e.budget.queueLength,
                 e.timedOut.get(), e.discarded.get())
     }
 
@@ -99,7 +101,8 @@ class Databases private constructor(
             // poll in slices so cancellation during a long wait stays responsive
             leased = e.budget.tryAcquire(minOf(remainingMs, 200), TimeUnit.MILLISECONDS)
         }
-        e.active.incrementAndGet()
+        val nowActive = e.active.incrementAndGet()
+        e.peak.updateAndGet { if (nowActive > it) nowActive else it }
         var conn: Connection? = null
         try {
             conn = e.dataSource.connection

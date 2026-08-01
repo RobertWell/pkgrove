@@ -84,6 +84,33 @@ class StructuredExecutorTest {
     }
 
     @Test
+    fun `transaction affinity - same-database writes serialize under a 1-lease budget`() = runBlocking {
+        // HEL-167 scenario 7: flows targeting the SAME database can't run truly
+        // parallel — the per-db lease budget (maxConnections=1) serializes them,
+        // so they never share a connection or interleave a transaction. maxConcurrency
+        // says "up to 4 at once", but the budget is the real, safe ceiling.
+        val s = "jdbc:duckdb:${tmp.resolve("s4.db")}"; val d = "jdbc:duckdb:${tmp.resolve("d4.db")}"
+        seed(s)
+        Databases.build {
+            applicationOwned(Src, dataSource(s))
+            applicationOwned(Dst, dataSource(d), maxConnections = 1)   // affinity: one writer
+        }.use { dbs ->
+            val flows = (0 until 4).map { i ->
+                Workflows.from(Src, "SELECT * FROM src WHERE id % 4 = :m", mapOf("m" to i.toLong()))
+                    .to(Dst, DuckDbDialect, "sink_$i")   // same DATABASE, one lease budget
+            }
+            val outcome = Workflows.executeStructured(flows, dbs, maxConcurrency = 4)
+            assertTrue(outcome is WorkflowOutcome.Completed, outcome.toString())
+            val total = (outcome as WorkflowOutcome.Completed).value.sumOf { it.report!!.rowsAffected }
+            assertEquals(50L, total)
+            assertTrue(dbs.metrics().all { it.activeLeases == 0L })
+            // affinity proof: maxConcurrency said 4, but the 1-lease budget on the
+            // target DB never let more than ONE write run at a time.
+            assertEquals(1L, dbs.metrics().single { it.key == "dst-db" }.maxConcurrentLeases)
+        }
+    }
+
+    @Test
     fun `fail-fast returns Failed on the first failure and leaks nothing`() = runBlocking {
         val s = "jdbc:duckdb:${tmp.resolve("s3.db")}"; val d = "jdbc:duckdb:${tmp.resolve("d3.db")}"
         seed(s)
