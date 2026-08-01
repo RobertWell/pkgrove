@@ -83,7 +83,7 @@ subprojects {
 configure(subprojects.filter { it.name.startsWith("rowrelay-") }) {
     apply(plugin = "maven-publish")
     apply(plugin = "org.jetbrains.dokka")
-    // HEL-190: PGP signing for Maven Central. Gradle-core plugin (no new
+    // HEL-189: PGP signing for Maven Central. Gradle-core plugin (no new
     // dependency → passes the supply-chain gate). GATED: only signs when an
     // in-memory key is provided via env, so GitHub-Packages / GitLab / local
     // publishes keep working unsigned. Central requires signed artifacts.
@@ -119,7 +119,7 @@ configure(subprojects.filter { it.name.startsWith("rowrelay-") }) {
                     description.set("RowRelay — reusable Kotlin data library: " +
                                     "dynamic JDBC/JDBI data access and bidirectional batch transfer")
                     url.set("https://github.com/RobertWell/rowrelay")
-                    // HEL-190 Maven Central metadata. developers/scm/issueManagement
+                    // HEL-189 Maven Central metadata. developers/scm/issueManagement
                     // are known and complete. The LICENSE is an OWNER decision
                     // (the repo LICENSE is still a placeholder) — the licenses
                     // block is emitted only when the owner supplies the choice via
@@ -183,7 +183,7 @@ configure(subprojects.filter { it.name.startsWith("rowrelay-") }) {
                     authentication { create<HttpHeaderAuthentication>("header") }
                 }
             }
-            // HEL-190: Maven Central (public, tokenless CONSUMPTION). GATED on
+            // HEL-189: Maven Central (public, tokenless CONSUMPTION). GATED on
             // env like the others — only configured when the Central credentials
             // are present (in CI, for a tagged release). MAVEN_CENTRAL_URL points
             // at the OSSRH-compatible staging endpoint the owner's Central Portal
@@ -204,7 +204,7 @@ configure(subprojects.filter { it.name.startsWith("rowrelay-") }) {
         }
     }
 
-    // HEL-190: sign publications for Maven Central. GATED — only required/active
+    // HEL-189: sign publications for Maven Central. GATED — only required/active
     // when SIGNING_KEY is provided (in-memory ASCII-armored PGP key + password
     // via env, no keyring file in the repo). Without it, unsigned publishes to
     // GitHub Packages / GitLab / mavenLocal keep working unchanged.
