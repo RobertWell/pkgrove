@@ -1,22 +1,30 @@
 # RowRelay dependency-verification refresh (HEL-124).
 #
 # Gradle dependency verification (gradle/verification-metadata.xml) pins a
-# SHA-256 for every resolved dependency + POM, and is ENFORCED automatically on
-# every build once the file is present — the `gate` job (publish.yml) and the
-# `check` job (ci.yml) both fail if a resolved artifact's checksum does not match.
+# SHA-256 for every resolved dependency + POM, ENFORCED automatically on every
+# build once present — the `check`/`gate`/SBOM/CodeQL jobs fail if a resolved
+# artifact's checksum does not match.
 #
-# The lesson from the first attempt: the metadata must be GENERATED IN THE
-# ENVIRONMENT THAT ENFORCES IT — a workstation resolves a slightly different set
-# (plugin markers / dokka variants) than the runner. This workflow regenerates
-# the file on an ubuntu runner over the exact gate task graph, PROVES the
-# freshly-generated file passes an enforced build, and uploads it. Run it after
-# any dependency change; commit the produced artifact.
+# The metadata MUST be generated in the environment that enforces it: a
+# workstation (even same-OS) resolves different JVM-conditional variants than the
+# hosted runner, so a locally-produced file rejects the CI build. This workflow
+# regenerates it ON the runner over the SUPERSET of every CI Gradle invocation
+# (check + build + publishToMavenLocal + cyclonedxBom; the integration test
+# runtime is verified leniently and excluded), proves an enforced build passes,
+# and PUSHES the runner-accurate file to the `ci/verification-metadata` branch
+# for review + merge to main.
+#
+# Trigger: edit this file (push) or dispatch. It only ever writes to its own
+# side branch, never to main.
 name: refresh-verification-metadata
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/refresh-verification-metadata.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   regenerate:
@@ -29,22 +37,33 @@ jobs:
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v3
 
-      # 1) Regenerate over the SAME task graph the gate enforces, so every
-      #    configuration CI resolves is recorded (checksums only; no PGP keyring).
-      - name: Regenerate verification metadata (sha256, gate task graph)
+      # Start from a clean slate so removed deps drop out of the file.
+      - name: Remove any stale metadata
+        run: rm -f gradle/verification-metadata.xml
+
+      # 1) Regenerate over the SUPERSET of every enforcing CI Gradle invocation.
+      - name: Regenerate verification metadata (sha256, full CI graph)
         run: |
           ./gradlew --write-verification-metadata sha256 \
-            clean check publishToMavenLocal -x :integration-tests:test
+            clean build publishToMavenLocal cyclonedxBom -x :integration-tests:test
 
-      # 2) Prove the freshly-generated file actually ENFORCES green on the runner
-      #    — a clean verifying build with no --write flag.
+      # 2) Prove the freshly-generated file ENFORCES green on the runner.
       - name: Prove enforced build passes with the regenerated metadata
-        run: ./gradlew clean check publishToMavenLocal -x :integration-tests:test
+        run: ./gradlew clean build publishToMavenLocal cyclonedxBom -x :integration-tests:test
 
-      # 3) Publish the runner-accurate file so it can be committed as the source
-      #    of truth (and diffed against the committed one to spot drift).
+      # 3) Publish the runner-accurate file: upload as an artifact AND push it to
+      #    a dedicated side branch (never main) for review + merge.
       - name: Upload runner-generated verification-metadata.xml
         uses: actions/upload-artifact@v4
         with:
           name: verification-metadata
           path: gradle/verification-metadata.xml
+
+      - name: Push runner-accurate metadata to ci/verification-metadata
+        run: |
+          git config user.name "rowrelay-ci"
+          git config user.email "rowrelay-ci@users.noreply.github.com"
+          git checkout -B ci/verification-metadata
+          git add -f gradle/verification-metadata.xml
+          git commit -m "chore(HEL-124): runner-generated verification metadata [skip ci]"
+          git push -f origin ci/verification-metadata
