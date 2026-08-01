@@ -136,6 +136,38 @@ Values land by **name**, never by SELECT order — reordering the source query
 cannot change the target mapping. The resolved plan is inspectable:
 `mapping.resolve(schema)` returns a `MappingPlan` you can assert on.
 
+## Golden path — managed workflows
+
+The recommended shape for real work: register your databases once, describe the
+flow as **immutable data** (typed keys + SQL, no connections inside), and run it
+through the managed **structured executor**. Your code carries no `Connection`,
+`commit`, `rollback`, or thread choreography — the runtime leases connections
+from the registry, bounds concurrency per database, and returns a **typed
+outcome** (`Completed` / `Partial` / `Failed` / `Cancelled` — partial completion
+can never be mistaken for success).
+
+```kotlin
+Databases.build {
+    applicationOwned(Source, sourceDataSource)   // your pool; RowRelay borrows, never closes it
+    applicationOwned(Target, targetDataSource)
+}.use { databases ->
+    val flow = Workflows
+        .from(Source, "SELECT id, symbol, price FROM trades WHERE price > :min",
+              mapOf("min" to 30.0))
+        .to(Target, DuckDbDialect, "big_trades")
+
+    val outcome = Workflows.executeStructured(listOf(flow), databases)
+    check(outcome is WorkflowOutcome.Completed)
+}
+```
+
+Independent flows fan out under a bounded budget (`maxConcurrency` and each
+database's lease budget); `BranchPolicy.SUPERVISED` keeps siblings running and
+retains every outcome, `FAIL_FAST` cancels them on the first failure.
+`Choice<L,R>` routes rows down different pipelines (validate → accept | reject)
+without conflating a business `Left` with an execution failure. The executor is
+pluggable — see `docs/adr/0001-workflow-executor-architecture.md`.
+
 ## Quick start (Java)
 
 Compiled in CI — see `integration-tests/.../JavaConsumerExample.java`.
@@ -190,7 +222,7 @@ try (JdbcReader.RowStream rows =
 ## Versioning
 
 Pre-stable `0.1.x`. No release is overwritten after publication. `1.0.0` waits
-for the HEL-120 adoption/API-stability gates. Maven Central is deliberately
-deferred (separate namespace-verification/signing process).
+for real-consumer adoption and API-stability confidence. Maven Central is
+deliberately deferred (separate namespace-verification/signing process).
 
 See `CHANGELOG.md` and `docs/ARCHITECTURE.md`.

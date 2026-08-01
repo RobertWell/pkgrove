@@ -90,4 +90,48 @@ class QuickStartExamples {
             }
         }
     }
+
+    // The golden-path: registered databases + an immutable flow + the managed
+    // structured executor — consumer code carries no Connection, commit,
+    // rollback, or thread choreography (README: golden-path).
+    private object Source : io.maxxga.rowrelay.jdbc.DatabaseKey("source")
+    private object Target : io.maxxga.rowrelay.jdbc.DatabaseKey("target")
+
+    private fun ds(url: String): javax.sql.DataSource =
+        java.lang.reflect.Proxy.newProxyInstance(
+            javax.sql.DataSource::class.java.classLoader,
+            arrayOf(javax.sql.DataSource::class.java)
+        ) { _, m, _ ->
+            if (m.name == "getConnection") DriverManager.getConnection(url)
+            else throw UnsupportedOperationException(m.name)
+        } as javax.sql.DataSource
+
+    @Test
+    fun `golden path - managed workflow with the structured executor`() = kotlinx.coroutines.runBlocking {
+        val srcUrl = "jdbc:duckdb:${tempDir.resolve("g_s.db")}"
+        val dstUrl = "jdbc:duckdb:${tempDir.resolve("g_d.db")}"
+        demoDb(srcUrl)
+        // --- README: golden-path ---
+        io.maxxga.rowrelay.jdbc.Databases.build {
+            applicationOwned(Source, ds(srcUrl))
+            applicationOwned(Target, ds(dstUrl))
+        }.use { databases ->
+            val flow = io.maxxga.rowrelay.transfer.Workflows
+                .from(Source, "SELECT id, symbol, price FROM trades WHERE price > :min",
+                      mapOf("min" to 30.0))
+                .to(Target, DuckDbDialect, "big_trades")
+
+            val outcome = io.maxxga.rowrelay.transfer.Workflows.executeStructured(
+                listOf(flow), databases)
+
+            check(outcome is io.maxxga.rowrelay.core.WorkflowOutcome.Completed)
+        }
+        // --- end README ---
+        DriverManager.getConnection(dstUrl).use { c ->
+            c.createStatement().use { st ->
+                val rs = st.executeQuery("SELECT count(*) FROM \"big_trades\"")
+                rs.next(); assertTrue(rs.getLong(1) > 0)
+            }
+        }
+    }
 }
