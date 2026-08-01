@@ -1,10 +1,20 @@
 package io.maxxga.rowrelay.transfer
 
+import io.maxxga.rowrelay.core.BranchFailure
 import io.maxxga.rowrelay.core.OperationReport
+import io.maxxga.rowrelay.core.WorkflowOutcome
 import io.maxxga.rowrelay.core.Row
 import io.maxxga.rowrelay.jdbc.DatabaseKey
 import io.maxxga.rowrelay.jdbc.Databases
 import io.maxxga.rowrelay.jdbc.SqlDialect
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.supervisorScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
@@ -16,11 +26,11 @@ import java.util.concurrent.TimeUnit
  * [Databases] registry per the HEL-128 scoped model and releases them on
  * every path.
  *
- * Distributed backends: the executor is pluggable ([WorkflowExecutor]).
- * Apache River was evaluated for the distributed slot and is NOT
- * implemented: River is retired in the Apache Attic (unmaintained — it would
- * also fail this repo's own supply-chain gate). The seam stays open for a
- * maintained backend; see docs/WORKFLOWS.md.
+ * Executors are pluggable ([WorkflowExecutor] for the blocking backends;
+ * [executeStructured] for the coroutine backend). The executor-architecture
+ * decision (coroutines default; Arrow/Temporal/Pekko/River evaluated seams —
+ * River allowed-but-gated, not banned) lives in
+ * docs/adr/0001-workflow-executor-architecture.md.
  */
 object Workflows {
 
@@ -133,4 +143,60 @@ object Workflows {
             }
         }
     }
+
+    /** Sibling-failure policy for [executeStructured]. */
+    enum class BranchPolicy { FAIL_FAST, SUPERVISED }
+
+    private class FlowFailed(val result: FlowResult) : Exception(result.error)
+
+    /**
+     * HEL-167: structured-concurrency executor for INDEPENDENT flows.
+     *  - bounded parallelism ([maxConcurrency]) AND each database's lease budget;
+     *  - structured cancellation: a caller cancel, or a FAIL_FAST sibling
+     *    failure, cancels all children — no orphan work, every lease released
+     *    through [Databases];
+     *  - typed [WorkflowOutcome]: Completed (all ok), Partial (SUPERVISED — some
+     *    failed; successes AND named failures retained, never hidden), Failed
+     *    (FAIL_FAST bubbled), Cancelled (cooperative cancel preserved).
+     * Blocking JDBC runs on [Dispatchers.IO]; branches never share a connection
+     * (each flow leases its own via the registry).
+     */
+    suspend fun executeStructured(
+        flows: List<RowFlow>,
+        databases: Databases,
+        maxConcurrency: Int = flows.size.coerceAtLeast(1),
+        policy: BranchPolicy = BranchPolicy.FAIL_FAST,
+    ): WorkflowOutcome<List<FlowResult>> {
+        require(maxConcurrency > 0) { "maxConcurrency must be positive" }
+        if (flows.isEmpty()) return WorkflowOutcome.Completed(emptyList())
+        val gate = Semaphore(maxConcurrency)
+        return try {
+            val results = when (policy) {
+                BranchPolicy.SUPERVISED -> supervisorScope {
+                    // runOne is exception-safe (returns FlowResult), so a failing
+                    // branch does not cancel its siblings — both outcomes retained.
+                    flows.map { f -> async(Dispatchers.IO) { gate.withPermit { runOne(f, databases) } } }
+                        .awaitAll()
+                }
+                BranchPolicy.FAIL_FAST -> coroutineScope {
+                    flows.map { f -> async(Dispatchers.IO) {
+                        val r = gate.withPermit { runOne(f, databases) }
+                        if (r.error != null) throw FlowFailed(r)   // cancels the scope
+                        r
+                    } }.awaitAll()
+                }
+            }
+            val failures = results.filter { it.error != null }
+            if (failures.isEmpty()) WorkflowOutcome.Completed(results)
+            else WorkflowOutcome.Partial(results,
+                failures.map { BranchFailure(it.flow.sinkTable ?: "?", it.error!!) })
+        } catch (e: CancellationException) {
+            throw e                                   // preserve cancellation
+        } catch (e: FlowFailed) {
+            WorkflowOutcome.Failed(e.result.error!!)  // FAIL_FAST: first failure wins
+        } catch (e: Throwable) {
+            WorkflowOutcome.Failed(e)
+        }
+    }
+
 }

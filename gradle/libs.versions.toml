@@ -8,8 +8,11 @@ ojdbc = "23.3.0.23.09"
 junit = "5.10.2"
 testcontainers = "1.21.4"
 postgres-driver = "42.7.13"
+coroutines = "1.8.1"
 
 [libraries]
+coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 jdbi3-core = { module = "org.jdbi:jdbi3-core", version.ref = "jdbi" }
 duckdb-jdbc = { module = "org.duckdb:duckdb_jdbc", version.ref = "duckdb" }
 ojdbc11 = { module = "com.oracle.database.jdbc:ojdbc11", version.ref = "ojdbc" }
