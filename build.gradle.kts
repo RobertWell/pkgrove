@@ -19,9 +19,31 @@ tasks.cyclonedxBom {
     setOutputFormat("all")   // JSON + XML
 }
 
+// Release-version policy (HEL-123 owner directive): published coordinates and
+// documentation use IMMUTABLE releases — never a mutable `-SNAPSHOT`. MAJOR for
+// breaking API / major workflow redesign, MINOR for backward-compatible
+// downstream enhancements, PATCH for backward-compatible fixes; 0.x is NOT a
+// blanket exception for breaking downstream changes. Development builds carry
+// commit identity instead (`-Pdev` → `<release>-dev.<shortSha>`), and such
+// coordinates are never published (the publish workflow refuses any version
+// containing `-SNAPSHOT`/`-dev`).
+val rowrelayRelease = "0.2.0"
+
+/** Short commit sha for `-Pdev` local builds; safe fallback if git is absent so
+ *  a dev build never fails on version resolution. Only invoked when `-Pdev` is
+ *  set, so normal `check`/publish never runs git. */
+fun devBuildVersion(): String = try {
+    val sha = ProcessBuilder("git", "rev-parse", "--short=8", "HEAD")
+        .redirectErrorStream(true).start()
+        .inputStream.bufferedReader().readText().trim()
+    if (sha.isEmpty()) "$rowrelayRelease-dev" else "$rowrelayRelease-dev.$sha"
+} catch (_: Exception) {
+    "$rowrelayRelease-dev"
+}
+
 allprojects {
     group = "io.maxxga.rowrelay"
-    version = "0.1.2-SNAPSHOT"
+    version = if (project.hasProperty("dev")) devBuildVersion() else rowrelayRelease
 
     repositories {
         mavenCentral()

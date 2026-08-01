@@ -3,7 +3,19 @@
 All notable changes to RowRelay. Pre-stable: breaking changes may occur in any
 0.x release and are listed here with migration notes.
 
-## 0.1.2-SNAPSHOT (unreleased)
+**Release-version policy:** published coordinates are **immutable releases** —
+never a mutable `-SNAPSHOT`. MAJOR = breaking API / major workflow redesign,
+MINOR = backward-compatible downstream enhancement, PATCH = backward-compatible
+fix; `0.x` is not a blanket exception for breaking changes. Development builds
+carry commit identity (`-Pdev` → `<release>-dev.<sha>`) and are never published.
+
+## 0.2.0
+
+First **immutable release** (the earlier `0.1.x-SNAPSHOT` coordinates were
+mutable pre-policy development builds and are retired — do not depend on them).
+This is a MINOR from the 0.1.0 bootstrap: everything since is additive /
+backward-compatible for existing `JdbcReader`/`JdbiReader`/`Transfer` consumers
+(the new `Workflows` surface is added, not a breaking change to the core).
 
 - Correctness: fail-visible transaction cleanup (rollback/autoCommit-restore
   failures surfaced, not swallowed; new TransactionState.UNCERTAIN) across all
@@ -11,20 +23,14 @@ All notable changes to RowRelay. Pre-stable: breaking changes may occur in any
 - Functional workflow algebra: Choice<L,R> (business routing) + typed
   WorkflowOutcome (Completed/Partial/Failed/Cancelled); coroutine structured
   executor (bounded per-db concurrency, fail-fast/supervised, cancellation-
-  preserving); partitionByChoice. See docs/adr/0001.
-- CI: publish gate + ci `check` aligned (integration-tests run informationally;
-  the reliable unit/module/dialect + compiled-doc-example suite is the gate).
-
-## 0.1.1-SNAPSHOT (unreleased)
-
-- Version bump: GitHub Packages' Maven registry does not overwrite an existing
-  version, so the substantially-expanded content since the 0.1.0-SNAPSHOT
-  bootstrap (postgres adapter, transactions, workflows, resource lifecycle,
-  pgjdbc CVE fix) publishes under a fresh pre-stable version. Publishing is now
-  tag/dispatch-triggered.
+  preserving); partitionByChoice; staged SourceFlow→ExecutableFlow types make
+  an incomplete flow unrepresentable at the executor. See docs/adr/0001.
 - Security: pgjdbc 42.7.3 -> 42.7.13 (CVE-2026-42198, CVE-2026-54291 HIGH).
+- CI: publish gate + ci `check` aligned (integration-tests run informationally;
+  the reliable unit/module/dialect + compiled-doc-example suite is the gate);
+  publish workflow refuses any non-immutable (`-SNAPSHOT`/`-dev`) version.
 
-## 0.1.0-SNAPSHOT (bootstrap)
+## 0.1.0 (bootstrap — historical)
 
 HEL-127 PostgreSQL adapter + migration boundary:
 

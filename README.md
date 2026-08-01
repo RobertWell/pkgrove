@@ -4,7 +4,8 @@ Reusable Kotlin data library for **dynamic JDBC/JDBI data access** and
 **bidirectional batch transfer** between databases — without DTOs, entities,
 generated classes, or per-table mapping code.
 
-- **Status:** pre-stable (`0.1.0-SNAPSHOT`). APIs may change before `1.0.0`.
+- **Status:** pre-stable (`0.2.0`). APIs may change before `1.0.0`, but every
+  published version is an **immutable release** — no `-SNAPSHOT`.
 - **Requirements:** Java 21+, Kotlin 1.9+ (consumers may be pure Java).
 - **Framework-neutral:** no Quarkus/Spring/JPA/REST dependencies in any artifact.
 
@@ -49,7 +50,7 @@ repositories {
     mavenCentral()
 }
 dependencies {
-    implementation("io.maxxga.rowrelay:rowrelay-jdbc:0.1.0-SNAPSHOT")
+    implementation("io.maxxga.rowrelay:rowrelay-jdbc:0.2.0")
 }
 ```
 
@@ -59,7 +60,7 @@ Maven:
 <dependency>
     <groupId>io.maxxga.rowrelay</groupId>
     <artifactId>rowrelay-jdbc</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.2.0</version>
 </dependency>
 ```
 
@@ -247,8 +248,14 @@ try (JdbcReader.RowStream rows =
 
 ## Versioning
 
-Pre-stable `0.1.x`. No release is overwritten after publication. `1.0.0` waits
-for real-consumer adoption and API-stability confidence. Maven Central is
-deliberately deferred (separate namespace-verification/signing process).
+Pre-stable `0.x`, **immutable releases only** — RowRelay never publishes a
+mutable `-SNAPSHOT`. Increment **MAJOR** for a breaking API or major
+workflow/coding-style redesign (with migration notes), **MINOR** for
+backward-compatible downstream enhancements, **PATCH** for backward-compatible
+fixes; `0.x` is not a blanket exception for breaking downstream changes. No
+release is overwritten after publication. Development builds carry commit
+identity (`./gradlew -Pdev …` → `0.2.0-dev.<sha>`) and are never published.
+`1.0.0` waits for real-consumer adoption and API-stability confidence. Maven
+Central is deliberately deferred (separate namespace-verification/signing).
 
 See `CHANGELOG.md` and `docs/ARCHITECTURE.md`.
