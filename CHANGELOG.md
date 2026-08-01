@@ -3,6 +3,18 @@
 All notable changes to RowRelay. Pre-stable: breaking changes may occur in any
 0.x release and are listed here with migration notes.
 
+## 0.1.2-SNAPSHOT (unreleased)
+
+- Correctness: fail-visible transaction cleanup (rollback/autoCommit-restore
+  failures surfaced, not swallowed; new TransactionState.UNCERTAIN) across all
+  write paths; key-only upsert emits DO NOTHING / insert-only MERGE.
+- Functional workflow algebra: Choice<L,R> (business routing) + typed
+  WorkflowOutcome (Completed/Partial/Failed/Cancelled); coroutine structured
+  executor (bounded per-db concurrency, fail-fast/supervised, cancellation-
+  preserving); partitionByChoice. See docs/adr/0001.
+- CI: publish gate + ci `check` aligned (integration-tests run informationally;
+  the reliable unit/module/dialect + compiled-doc-example suite is the gate).
+
 ## 0.1.1-SNAPSHOT (unreleased)
 
 - Version bump: GitHub Packages' Maven registry does not overwrite an existing
