@@ -126,6 +126,25 @@ configure(subprojects.filter { it.name.startsWith("rowrelay-") }) {
                     password = System.getenv("GITHUB_TOKEN")
                 }
             }
+            // HEL-123: LAN GitLab Maven registry (PAT-free registry consumption
+            // for LAN CI consumers). Only configured inside GitLab CI — the env
+            // supplies the in-cluster URL + ephemeral job token. http is the
+            // accepted in-cluster hop (pod->service on a single node; the
+            // job-scoped token expires with the job — same tradeoff as the
+            // datakit deploy, documented there).
+            val gitlabMavenUrl = System.getenv("ROWRELAY_GITLAB_MAVEN_URL")
+            if (!gitlabMavenUrl.isNullOrBlank() && System.getenv("CI_JOB_TOKEN") != null) {
+                maven {
+                    name = "GitLabLan"
+                    url = uri(gitlabMavenUrl)
+                    isAllowInsecureProtocol = true
+                    credentials(HttpHeaderCredentials::class) {
+                        name = "Job-Token"
+                        value = System.getenv("CI_JOB_TOKEN")
+                    }
+                    authentication { create<HttpHeaderAuthentication>("header") }
+                }
+            }
         }
     }
 }

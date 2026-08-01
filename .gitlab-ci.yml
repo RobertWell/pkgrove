@@ -20,6 +20,7 @@ default:
 
 stages:
   - verify
+  - publish
 
 verification-metadata:
   stage: verify
@@ -49,3 +50,32 @@ verification-metadata:
     paths:
       - gradle/verification-metadata.xml
     expire_in: 90 days
+
+# HEL-123: publish the immutable release to THIS project's Maven package
+# registry, so LAN CI consumers (AuditPatchX) resolve RowRelay as a normal
+# registry dependency — PAT-free (public project => anonymous reads; the
+# publish authenticates with the ephemeral job token). Gated on the verify
+# stage, which runs the full test build under ENFORCED dependency verification.
+# GitLab's Maven registry accepts re-publication of a version, so a re-run of
+# an unchanged main is harmless; the version itself is immutable by policy
+# (no -SNAPSHOT — see the version guard in the GitHub publish workflow).
+publish-registry:
+  stage: publish
+  image: maven:3.9-eclipse-temurin-21
+  needs: [verification-metadata]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  variables:
+    GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle-home"
+    GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx1g"
+    # CI_API_V4_URL is the EDGE hostname (gitlab.local.test), which in-cluster
+    # job pods cannot resolve — publish via the cluster service DNS instead
+    # (same accepted plain-http in-cluster hop as the datakit deploy).
+    ROWRELAY_GITLAB_MAVEN_URL: "http://gitlab.gitlab.svc.cluster.local/api/v4/projects/$CI_PROJECT_ID/packages/maven"
+  cache:
+    key: rowrelay-gradle
+    paths:
+      - .gradle-home/caches
+      - .gradle-home/wrapper
+  script:
+    - ./gradlew --no-daemon publishAllPublicationsToGitLabLanRepository -x :integration-tests:test
