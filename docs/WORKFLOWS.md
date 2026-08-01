@@ -37,20 +37,23 @@ value-level work and filtering.
 `FlowResult` carries the per-flow report or error — one failed flow never
 aborts its siblings silently; the caller sees exactly which flows succeeded.
 
-## Distributed backend: the River decision
+## Distributed backend: the executor evaluation
 
-HEL-125 proposed Apache River as an optional distributed ETL backend.
-**Verified 2026-08-01: Apache River is retired in the Apache Attic** —
-unmaintained, no security updates, and it would fail this repository's own
-supply-chain gate (HEL-124). Decision:
+The full executor-architecture decision — coroutines (default), Arrow
+(optional interop), Temporal/Pekko/River (evaluated seams), Flink/Jet (out of
+scope) — lives in **`docs/adr/0001-workflow-executor-architecture.md`**.
 
-- the executor seam (`WorkflowExecutor`) is the pluggable slot the issue
-  asked for, and it is real today (two local backends);
-- **no River implementation will be built**; any future distributed backend
-  must be a maintained project and must obey the rules already encoded here:
-  definitions carry keys not credentials (`docs/RESOURCES.md`), retries obey
-  `RetrySafety`/checkpoints (`docs/TRANSACTIONS.md`), queue-take is not
-  exactly-once, completion records only after cleanup + transaction outcome.
+**Apache River is NOT banned** (stance updated 2026-08-01, HEL-167). It is
+retired in the Apache Attic with a smaller maintenance community, so it is not
+the recommended default — but its lightweight discovery/leasing model is a
+legitimate optional candidate. Any River/JGDMS adapter must live in a separate
+optional module, add no transitive dependency to `rowrelay-core` or the default
+executor, pass CVE/Java/operational review, name a maintenance owner, and prove
+a real lightweight advantage before adoption. Every distributed backend — River
+or otherwise — obeys the rules already encoded here: definitions carry keys not
+credentials (`docs/RESOURCES.md`), retries obey `RetrySafety`/checkpoints
+(`docs/TRANSACTIONS.md`), queue-take is not exactly-once, completion records
+only after cleanup + transaction outcome.
 
 ## Boundaries
 
