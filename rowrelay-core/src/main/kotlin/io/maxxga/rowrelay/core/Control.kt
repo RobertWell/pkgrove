@@ -40,7 +40,15 @@ class CancelToken(private val deadlineNanos: Long? = null) {
     }
 }
 
-class OperationCancelledException : RuntimeException("operation cancelled")
+/**
+ * A cooperative cancellation was observed. First-class and distinguishable —
+ * writers/executors propagate it UNWRAPPED so callers can classify it as
+ * cancelled (never a business failure). When cancellation aborts a write, the
+ * partial [report] carries what was durably committed (honest resumability for
+ * chunked policies); it is null for read-side cancellation.
+ */
+class OperationCancelledException(val report: OperationReport? = null) :
+    RuntimeException("operation cancelled")
 
 /**
  * What to do when a value/type cannot be converted faithfully for a target.

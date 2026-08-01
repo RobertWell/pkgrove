@@ -1,6 +1,7 @@
 package io.maxxga.rowrelay.transfer
 
 import io.maxxga.rowrelay.core.Identifiers
+import io.maxxga.rowrelay.core.CancelToken
 import io.maxxga.rowrelay.core.OperationCancelledException
 import io.maxxga.rowrelay.core.OperationReport
 import io.maxxga.rowrelay.core.Row
@@ -195,10 +196,10 @@ class Relay private constructor(
     /** Execute one plan through the managed runtime and return a typed
      *  [TransferOutcome]. Cancellation and fatal JVM errors propagate — they
      *  are never normalized into a business failure. */
-    fun execute(plan: TransferPlan): TransferOutcome {
+    fun execute(plan: TransferPlan, cancel: CancelToken = CancelToken.none()): TransferOutcome {
         val flow = plan.flow
         return try {
-            val opts = flow.options.copy(rowTransform = flow.transform)
+            val opts = flow.options.copy(rowTransform = flow.transform, cancelToken = cancel)
             val report =
                 if (flow.sourceKey == flow.sinkKey)
                     databases.withConnection(flow.sourceKey, opts.cancelToken) { c ->
@@ -216,7 +217,8 @@ class Relay private constructor(
             else TransferOutcome.Partial(plan, report,
                 TransferOutcome.Checkpoint(report.rowsAffected))
         } catch (e: OperationCancelledException) {
-            TransferOutcome.Cancelled(plan)
+            TransferOutcome.Cancelled(plan,
+                e.report?.let { TransferOutcome.Checkpoint(it.rowsAffected) })
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt(); throw e         // cooperative cancel, never swallowed
         } catch (e: Exception) {
@@ -281,6 +283,9 @@ sealed interface TransferOutcome {
     data class Failed(override val plan: Relay.TransferPlan,
                       val cause: Throwable) : TransferOutcome
 
-    /** Cooperatively cancelled via the plan's CancelToken. */
-    data class Cancelled(override val plan: Relay.TransferPlan) : TransferOutcome
+    /** Cooperatively cancelled via the plan's CancelToken. [checkpoint] carries
+     *  the durably-committed rows when cancellation aborted a write (null for
+     *  read-side cancellation) — resume from it like [Partial]. */
+    data class Cancelled(override val plan: Relay.TransferPlan,
+                         val checkpoint: Checkpoint? = null) : TransferOutcome
 }

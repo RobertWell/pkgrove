@@ -154,6 +154,30 @@ class RelayTest {
     }
 
     @Test
+    fun `cancelled execution yields TransferOutcome Cancelled - never Failed`() {
+        val srcUrl = "jdbc:duckdb:${tmp.resolve("c.db")}"
+        seed(srcUrl)
+        Relay.build {
+            database(Sales, dataSource(srcUrl), DuckDbDialect)
+            database(Analytics, dataSource("jdbc:duckdb:${tmp.resolve("cd.db")}"), DuckDbDialect)
+        }.use { relay ->
+            val plan = relay.transfer("cancelme") {
+                from(Sales) { query("SELECT customer_id, display_name FROM customer") }
+                to(Analytics, table = "sink")
+            }
+            // an already-expired token: the reader checks cancellation at the
+            // START of the first hasNext() (before any row), so this cancels
+            // deterministically regardless of machine speed. Regression guard for
+            // the HEL-129 fix — cancellation must classify as Cancelled, not
+            // Failed (it used to be wrapped in BatchWriteException).
+            val expired = io.maxxga.rowrelay.core.CancelToken.withTimeout(1)
+            Thread.sleep(5)
+            val outcome = relay.execute(plan, expired)
+            assertTrue(outcome is TransferOutcome.Cancelled, "expected Cancelled, got $outcome")
+        }
+    }
+
+    @Test
     fun `incomplete plans fail at DEFINITION time - not at execution`() {
         Relay.build {
             database(Sales, dataSource("jdbc:duckdb:"), DuckDbDialect)

@@ -2,6 +2,7 @@ package io.maxxga.rowrelay.jdbc
 
 import io.maxxga.rowrelay.core.CancelToken
 import io.maxxga.rowrelay.core.DataWarning
+import io.maxxga.rowrelay.core.OperationCancelledException
 import io.maxxga.rowrelay.core.OperationReport
 import io.maxxga.rowrelay.core.RowBatch
 import java.sql.Connection
@@ -112,12 +113,27 @@ object JdbcBatchWriter {
         } catch (e: BatchWriteException) {
             thrown = e
             throw e
+        } catch (e: OperationCancelledException) {
+            // HEL-129 fix: cancellation is a FIRST-CLASS signal, not a batch-write
+            // failure — roll back the OPEN chunk (prior committed chunks stand for
+            // PerChunk) and propagate UNWRAPPED so callers (Relay typed outcomes)
+            // classify it as Cancelled, not Failed. The exception carries the
+            // honest partial report (durably-committed rows) for resumability.
+            // A rollback that itself fails is attached, never swallowed.
+            val rollbackFailure = runCatching { connection.rollback() }.exceptionOrNull()
+            val report = OperationReport(
+                rowsAffected = rowsCommitted, batches = batchesDone,
+                elapsedMillis = elapsed(), completed = false, warnings = warnings.toList(),
+                failedBatchIndex = if (batchIndex >= 0) batchIndex else null,
+                failedRowRange = if (rowsInOpenChunk > 0) chunkStartRow until (chunkStartRow + rowsInOpenChunk) else null,
+            )
+            val cancelled = OperationCancelledException(report)
+            rollbackFailure?.let { cancelled.addSuppressed(it) }
+            thrown = cancelled
+            throw cancelled
         } catch (e: Exception) {
-            // cancellation or infrastructure failure: roll back the open chunk.
+            // infrastructure failure: roll back the open chunk.
             // A rollback that itself fails is surfaced (attached), never swallowed.
-            // (Whether cancellation should propagate AS cancellation rather than
-            // wrapped here — with its partial report carried — is a deliberate
-            // HEL-125 outcome-type decision, handled in that effort.)
             val rollbackFailure = runCatching { connection.rollback() }.exceptionOrNull()
             val report = OperationReport(
                 rowsAffected = rowsCommitted, batches = batchesDone,

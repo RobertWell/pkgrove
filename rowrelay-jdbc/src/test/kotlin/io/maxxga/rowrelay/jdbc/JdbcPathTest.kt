@@ -8,6 +8,7 @@ import io.maxxga.rowrelay.core.ValueKind
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -167,12 +168,15 @@ class JdbcPathTest {
             if (seen++ == 1) token.cancel()
             it
         }
-        val ex = assertThrows(JdbcBatchWriter.BatchWriteException::class.java) {
+        // HEL-129: write cancellation propagates as OperationCancelledException
+        // (UNWRAPPED — distinguishable from a batch-write failure), carrying the
+        // honest partial report so a caller can classify it as cancelled and
+        // resume from the durably-committed rows.
+        val ex = assertThrows(OperationCancelledException::class.java) {
             JdbcBatchWriter.write(conn, "INSERT INTO sink VALUES (?, ?)", cancellingBatches,
                                   JdbcBatchWriter.WriteOptions(cancelToken = token))
         }
-        assertFalse(ex.report.completed)
-        assertTrue(ex.cause is OperationCancelledException)
-        assertNull(null)
+        assertNotNull(ex.report)
+        assertFalse(ex.report!!.completed)
     }
 }
