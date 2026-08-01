@@ -120,20 +120,17 @@ configure(subprojects.filter { it.name.startsWith("rowrelay-") }) {
                                     "dynamic JDBC/JDBI data access and bidirectional batch transfer")
                     url.set("https://github.com/RobertWell/rowrelay")
                     // HEL-189 Maven Central metadata. developers/scm/issueManagement
-                    // are known and complete. The LICENSE is an OWNER decision
-                    // (the repo LICENSE is still a placeholder) — the licenses
-                    // block is emitted only when the owner supplies the choice via
-                    // -Prowrelay.license.name / -Prowrelay.license.url, so a wrong
-                    // license can never ship. Central REQUIRES it; see docs/RELEASING.md.
-                    val licName = (findProperty("rowrelay.license.name") as String?)
-                    val licUrl = (findProperty("rowrelay.license.url") as String?)
-                    if (!licName.isNullOrBlank() && !licUrl.isNullOrBlank()) {
-                        licenses {
-                            license {
-                                name.set(licName)
-                                url.set(licUrl)
-                                distribution.set("repo")
-                            }
+                    // complete. License decided by the owner: MIT (2026-08).
+                    // Default emits MIT on every published artifact; overridable
+                    // via -Prowrelay.license.name/.url. Central REQUIRES it — see
+                    // docs/RELEASING.md.
+                    val licName = (findProperty("rowrelay.license.name") as String?) ?: "MIT License"
+                    val licUrl = (findProperty("rowrelay.license.url") as String?) ?: "https://opensource.org/license/mit"
+                    licenses {
+                        license {
+                            name.set(licName)
+                            url.set(licUrl)
+                            distribution.set("repo")
                         }
                     }
                     developers {

@@ -104,3 +104,7 @@ Versioning: pre-stable `0.x`, immutable releases only (MAJOR = breaking API or
 major workflow redesign, MINOR = backward-compatible enhancement, PATCH = fix;
 `0.x` is not a blanket exception). Dev builds carry commit identity
 (`-Pdev` → `0.2.0-dev.<sha>`) and are never published. See `CHANGELOG.md`.
+
+## License
+
+MIT — see [`LICENSE`](LICENSE). © 2026 RobertWell.

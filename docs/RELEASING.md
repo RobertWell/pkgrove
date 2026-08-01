@@ -25,19 +25,11 @@ Two ways to own `io.maxxga` on central.sonatype.com:
   artifact coordinate, so the one current consumer (AuditPatchX) updates its
   `groupId`. Cheapest if `maxxga.io` isn't owned.
 
-### Prerequisite 2 — License (OWNER DECISION)
-Central requires an OSI-approved license in the POM. The repo `LICENSE` is still
-a **placeholder** (all-rights-reserved) — a public release cannot ship that.
-Once chosen, replace `LICENSE` with the full text and pass the metadata at
-publish time:
-```
--Prowrelay.license.name="Apache License 2.0" \
--Prowrelay.license.url="https://www.apache.org/licenses/LICENSE-2.0"
-```
-(Recommended: **Apache-2.0** — permissive with an explicit patent grant, the
-norm for JVM data libraries. MIT is the simpler permissive alternative.) The
-POM emits the `<licenses>` block only when these are set, so a wrong license can
-never ship by accident.
+### Prerequisite 2 — License — DECIDED: **MIT** ✅
+Owner chose **MIT** (2026-08). `LICENSE` now holds the full MIT text
+(© 2026 RobertWell), and the POM emits the MIT `<licenses>` block **by default**
+on every published artifact (overridable via `-Prowrelay.license.name/.url`).
+No further license input needed.
 
 ### Prerequisite 3 — Signing key (secret)
 Central requires PGP-signed artifacts. Generate a key, publish the public half
