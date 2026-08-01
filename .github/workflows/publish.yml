@@ -43,7 +43,9 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v3
-      - run: ./gradlew clean check -x :integration-tests:test
+      # publishToMavenLocal builds ALL publish artifacts (incl. dokka javadoc
+      # jars) — so a broken lock/artifact fails HERE, not at the remote deploy.
+      - run: ./gradlew clean check publishToMavenLocal -x :integration-tests:test
 
   publish:
     needs: [gate, security]
