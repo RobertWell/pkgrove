@@ -186,4 +186,48 @@ class OracleTransferIT {
             }
         }
     }
+
+    // HEL-126 live Oracle transaction matrix: savepoint-per-batch preserves
+    // earlier batches through a poison batch; Atomic rolls the whole thing back.
+    private val txSchema = io.maxxga.rowrelay.core.Schema(listOf(
+        io.maxxga.rowrelay.core.Column("id", io.maxxga.rowrelay.core.ValueKind.NUMERIC, "NUMBER", precision = 9)))
+    private fun txBatch(values: List<Long?>) = io.maxxga.rowrelay.core.RowBatch(
+        txSchema, values.map { io.maxxga.rowrelay.core.Row(txSchema, listOf(it)) })
+
+    @Test
+    fun `savepoint-per-batch on oracle keeps earlier batches and skips the poison one`() {
+        oconn.createStatement().use { it.execute("CREATE TABLE sp_dest (id NUMBER(9) NOT NULL)") }
+        val batches = sequenceOf(
+            txBatch(listOf(1L, 2L)), txBatch(listOf(3L, null)), txBatch(listOf(5L)))
+        val o = io.maxxga.rowrelay.jdbc.TransactionalWriter.write(
+            oconn, "INSERT INTO sp_dest VALUES (?)", batches,
+            io.maxxga.rowrelay.jdbc.TransactionPolicy.SavepointPerBatch, OracleDialect)
+        assertEquals(io.maxxga.rowrelay.jdbc.TransactionState.PARTIALLY_COMMITTED, o.state)
+        assertEquals(2L, o.committedRows)           // batch 1 survived the batch-2 poison
+        oconn.createStatement().use { st ->
+            val rs = st.executeQuery("SELECT count(*) FROM sp_dest"); rs.next()
+            assertEquals(2, rs.getInt(1))
+        }
+    }
+
+    @Test
+    fun `atomic policy on oracle rolls the whole transfer back on a poison row`() {
+        oconn.createStatement().use { it.execute("CREATE TABLE atomic_dest (id NUMBER(9) NOT NULL)") }
+        val batches = sequenceOf(txBatch(listOf(1L, 2L)), txBatch(listOf(3L, null)))
+        // Atomic surfaces failure by THROWING with the honest outcome attached —
+        // never a silent partial. The exception carries ROLLED_BACK + safe-to-retry.
+        val ex = org.junit.jupiter.api.Assertions.assertThrows(
+            io.maxxga.rowrelay.jdbc.TransactionWriteException::class.java) {
+            io.maxxga.rowrelay.jdbc.TransactionalWriter.write(
+                oconn, "INSERT INTO atomic_dest VALUES (?)", batches,
+                io.maxxga.rowrelay.jdbc.TransactionPolicy.Atomic, OracleDialect)
+        }
+        assertEquals(io.maxxga.rowrelay.jdbc.TransactionState.ROLLED_BACK, ex.outcome.state)
+        assertEquals(0L, ex.outcome.committedRows)
+        assertEquals(io.maxxga.rowrelay.jdbc.RetrySafety.SAFE_NOTHING_COMMITTED, ex.outcome.retrySafety)
+        oconn.createStatement().use { st ->
+            val rs = st.executeQuery("SELECT count(*) FROM atomic_dest"); rs.next()
+            assertEquals(0, rs.getInt(1))           // all-or-nothing: nothing committed
+        }
+    }
 }
