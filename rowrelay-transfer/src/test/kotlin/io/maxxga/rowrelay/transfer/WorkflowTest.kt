@@ -107,13 +107,14 @@ class WorkflowTest {
     }
 
     @Test
-    fun `missing sink fails as a result not an exception storm`() {
-        val flow = Workflows.from(Src, "SELECT 1")
-        val srcUrl = "jdbc:duckdb:${tmp.resolve("s3.db")}"
-        Databases.build { applicationOwned(Src, dataSource(srcUrl)) }.use { dbs ->
-            val r = Workflows.SequentialExecutor.execute(listOf(flow), dbs).single()
-            assertTrue(!r.succeeded)
-            assertTrue(r.error!!.message!!.contains("no sink"))
-        }
+    fun `an incomplete flow cannot reach an executor - it is unrepresentable`() {
+        // HEL-125 §3: from(...) returns a SourceFlow. An executor accepts only
+        // ExecutableFlow, so a flow WITHOUT a sink is a COMPILE error, not a
+        // runtime failure — there is no nullable-sink + !! at run time. The line
+        // below would not compile (kept as documentation, not executed):
+        //     Workflows.SequentialExecutor.execute(listOf(Workflows.from(Src, "SELECT 1")), dbs)
+        val incomplete = Workflows.from(Src, "SELECT 1")     // a SourceFlow
+        val executable = incomplete.to(Dst, DuckDbDialect, "t")   // only now runnable
+        assertTrue(executable is Workflows.ExecutableFlow)
     }
 }

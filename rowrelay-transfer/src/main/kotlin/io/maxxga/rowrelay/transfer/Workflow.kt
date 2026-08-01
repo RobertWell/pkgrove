@@ -34,20 +34,21 @@ import java.util.concurrent.TimeUnit
  */
 object Workflows {
 
-    /** Immutable flow definition. Build via [from]. */
-    data class RowFlow internal constructor(
+    /**
+     * A flow with a source but NO sink yet — an immutable value that is **not
+     * executable**. Add a sink with [to] to get an [ExecutableFlow]. This
+     * staging makes an incomplete flow unrepresentable at the executor: there
+     * is no nullable-sink recovered with `!!` at run time (HEL-125 §3).
+     */
+    data class SourceFlow internal constructor(
         val sourceKey: DatabaseKey,
         val sourceSql: String,
         val namedParams: Map<String, Any?>,
         internal val transform: ((Row) -> Row?)?,
-        val sinkKey: DatabaseKey?,
-        val sinkDialect: SqlDialect?,
-        val sinkTable: String?,
-        val options: Transfer.Options,
     ) {
         /** Per-row transform (schema-preserving); return null to drop the row.
          *  Chained transforms compose in order. */
-        fun transform(fn: (Row) -> Row?): RowFlow {
+        fun transform(fn: (Row) -> Row?): SourceFlow {
             val prev = transform
             val composed: (Row) -> Row? =
                 if (prev == null) fn else { r -> prev(r)?.let(fn) }
@@ -55,25 +56,39 @@ object Workflows {
         }
 
         /** Keep only rows matching [predicate]. */
-        fun filter(predicate: (Row) -> Boolean): RowFlow =
+        fun filter(predicate: (Row) -> Boolean): SourceFlow =
             transform { r -> if (predicate(r)) r else null }
 
-        /** Terminal: write into [table] on [key] via [dialect]. */
+        /** Terminal: complete the flow with a sink. Returns an [ExecutableFlow]
+         *  — the ONLY type an executor accepts. */
         fun to(key: DatabaseKey, dialect: SqlDialect, table: String,
-               options: Transfer.Options = this.options): RowFlow =
-            copy(sinkKey = key, sinkDialect = dialect, sinkTable = table,
-                 options = options)
+               options: Transfer.Options = Transfer.Options()): ExecutableFlow =
+            ExecutableFlow(this, key, dialect, table, options)
     }
 
-    /** Start a flow from a named-parameter query on [key]. */
+    /** A complete, runnable flow: source + sink. Executors accept only this. */
+    data class ExecutableFlow internal constructor(
+        val source: SourceFlow,
+        val sinkKey: DatabaseKey,
+        val sinkDialect: SqlDialect,
+        val sinkTable: String,
+        val options: Transfer.Options,
+    ) {
+        val sourceKey: DatabaseKey get() = source.sourceKey
+        val sourceSql: String get() = source.sourceSql
+        val namedParams: Map<String, Any?> get() = source.namedParams
+        internal val transform: ((Row) -> Row?)? get() = source.transform
+    }
+
+    /** Start a flow from a named-parameter query on [key]. Returns a
+     *  [SourceFlow]; call [SourceFlow.to] to make it executable. */
     @JvmStatic
     @JvmOverloads
-    fun from(key: DatabaseKey, sql: String, namedParams: Map<String, Any?> = emptyMap(),
-             options: Transfer.Options = Transfer.Options()): RowFlow =
-        RowFlow(key, sql, namedParams, null, null, null, null, options)
+    fun from(key: DatabaseKey, sql: String, namedParams: Map<String, Any?> = emptyMap()): SourceFlow =
+        SourceFlow(key, sql, namedParams, null)
 
     /** One executed flow's result. */
-    data class FlowResult(val flow: RowFlow, val report: OperationReport?,
+    data class FlowResult(val flow: ExecutableFlow, val report: OperationReport?,
                           val error: Throwable?) {
         val succeeded: Boolean get() = error == null
     }
@@ -82,15 +97,13 @@ object Workflows {
      *  maintained) distributed. Definitions in, results out; resource
      *  acquisition always flows through the [Databases] registry. */
     interface WorkflowExecutor {
-        fun execute(flows: List<RowFlow>, databases: Databases): List<FlowResult>
+        fun execute(flows: List<ExecutableFlow>, databases: Databases): List<FlowResult>
     }
 
-    private fun runOne(flow: RowFlow, databases: Databases): FlowResult {
-        val sinkKey = flow.sinkKey
-            ?: return FlowResult(flow, null,
-                IllegalStateException("flow has no sink — call .to(...)"))
-        val dialect = flow.sinkDialect!!
-        val table = flow.sinkTable!!
+    private fun runOne(flow: ExecutableFlow, databases: Databases): FlowResult {
+        val sinkKey = flow.sinkKey        // non-null by type — no !! at run time
+        val dialect = flow.sinkDialect
+        val table = flow.sinkTable
         return try {
             val opts = flow.options.copy(rowTransform = flow.transform)
             val report =
@@ -118,7 +131,7 @@ object Workflows {
     /** Runs flows one after another; first-class for correctness-critical
      *  pipelines and the default choice. */
     object SequentialExecutor : WorkflowExecutor {
-        override fun execute(flows: List<RowFlow>, databases: Databases): List<FlowResult> =
+        override fun execute(flows: List<ExecutableFlow>, databases: Databases): List<FlowResult> =
             flows.map { runOne(it, databases) }
     }
 
@@ -130,7 +143,7 @@ object Workflows {
      */
     class ParallelExecutor(private val maxConcurrentFlows: Int) : WorkflowExecutor {
         init { require(maxConcurrentFlows > 0) }
-        override fun execute(flows: List<RowFlow>, databases: Databases): List<FlowResult> {
+        override fun execute(flows: List<ExecutableFlow>, databases: Databases): List<FlowResult> {
             val pool = Executors.newFixedThreadPool(maxConcurrentFlows) { r ->
                 Thread(r, "rowrelay-flow").apply { isDaemon = true }
             }
@@ -162,7 +175,7 @@ object Workflows {
      * (each flow leases its own via the registry).
      */
     suspend fun executeStructured(
-        flows: List<RowFlow>,
+        flows: List<ExecutableFlow>,
         databases: Databases,
         maxConcurrency: Int = flows.size.coerceAtLeast(1),
         policy: BranchPolicy = BranchPolicy.FAIL_FAST,
