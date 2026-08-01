@@ -59,10 +59,23 @@ vulnerability-free.
   --write-locks`) and review the lockfile diff in the PR.
 - Repositories are explicitly `mavenCentral()` only (plus GitHub Packages for
   publishing); no fallback repositories exist in the build.
-- Full checksum `verification-metadata.xml` is deliberately deferred until
-  the dependency set stabilizes post-1.0 (locking already pins exact
-  versions; verification metadata adds checksum pinning at meaningful
-  maintenance cost while the graph is still moving). Revisit at 1.0.
+- **Artifact-integrity verification** is ENABLED: `gradle/verification-metadata.xml`
+  pins a SHA-256 for every resolved dependency **and** POM
+  (`<verify-metadata>true</verify-metadata>`, checksum-only —
+  `verify-signatures=false`, no PGP-keyring dependency). Gradle enforces it on
+  **every** build automatically, so a substituted or tampered artifact fails
+  the `gate` (publish.yml) and `check` (ci.yml) jobs — integrity ("is this the
+  artifact we expect") distinct from the CVE scan ("is it vulnerable").
+  - **Generate in the enforcing environment.** The metadata must be produced on
+    a runner-equivalent environment over the exact gate task graph — a
+    workstation resolves a different set (plugin markers / dokka variants) and
+    the file then rejects the CI build. Refresh with the
+    **`refresh-verification-metadata`** workflow (`workflow_dispatch`): it
+    regenerates on an ubuntu runner, proves an enforced build passes, and
+    uploads the runner-accurate file to commit. Locally the equivalent is
+    `./gradlew --write-verification-metadata sha256 clean check
+    publishToMavenLocal -x :integration-tests:test` on Linux, then commit and
+    let CI confirm.
 
 ## SBOM
 
