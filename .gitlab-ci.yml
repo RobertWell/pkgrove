@@ -1,0 +1,51 @@
+# RowRelay — GitLab CI (LAN mirror `root/rowrelay`; main-of-record is GitHub).
+#
+# HEL-124 (owner directive): verification-metadata.xml is generated INSIDE
+# GitLab CI, never locally. This job:
+#   1. UNION-APPENDS onto the committed file (Gradle's --write-verification-
+#      metadata adds missing entries and never removes existing ones, so the
+#      GitHub-runner-resolved entries are preserved and the union satisfies
+#      both CI environments — including AuditPatchX's from-source provisioning
+#      build, which runs in this same GitLab runner environment).
+#   2. Proves the ENFORCED build passes in this environment (no --write flag).
+#   3. Exposes gradle/verification-metadata.xml as the job artifact — the ONLY
+#      sanctioned source for updating the file on GitHub main (fetch the
+#      artifact, commit it verbatim; do not regenerate anywhere else).
+#
+# Refresh flow after a dependency change:
+#   push the change to the GitLab mirror -> this job runs -> fetch the artifact
+#   -> commit it to GitHub main -> GitHub CI enforces it green.
+default:
+  interruptible: true
+
+stages:
+  - verify
+
+verification-metadata:
+  stage: verify
+  # same warm image the AuditPatchX backend job uses (JDK 21; wrapper supplies Gradle)
+  image: maven:3.9-eclipse-temurin-21
+  variables:
+    GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle-home"
+    GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx1g"
+  cache:
+    key: rowrelay-gradle
+    paths:
+      - .gradle-home/caches
+      - .gradle-home/wrapper
+  script:
+    # 1) union-append over the SUPERSET of every enforcing Gradle invocation
+    #    (check + gate + SBOM + CodeQL graphs; integration-tests excluded — its
+    #    heavy testcontainer runtime is verified leniently and never published)
+    - ./gradlew --no-daemon --write-verification-metadata sha256
+        clean build publishToMavenLocal cyclonedxBom -x :integration-tests:test
+    # 2) prove the enforced build passes IN THIS ENVIRONMENT
+    - ./gradlew --no-daemon
+        clean build publishToMavenLocal cyclonedxBom -x :integration-tests:test
+    # 3) surface whether generation changed anything (informational)
+    - git diff --stat -- gradle/verification-metadata.xml || true
+  artifacts:
+    name: verification-metadata
+    paths:
+      - gradle/verification-metadata.xml
+    expire_in: 90 days

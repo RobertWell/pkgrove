@@ -66,16 +66,20 @@ vulnerability-free.
   **every** build automatically, so a substituted or tampered artifact fails
   the `gate` (publish.yml) and `check` (ci.yml) jobs — integrity ("is this the
   artifact we expect") distinct from the CVE scan ("is it vulnerable").
-  - **Generate in the enforcing environment.** The metadata must be produced on
-    a runner-equivalent environment over the exact gate task graph — a
-    workstation resolves a different set (plugin markers / dokka variants) and
-    the file then rejects the CI build. Refresh with the
-    **`refresh-verification-metadata`** workflow (`workflow_dispatch`): it
-    regenerates on an ubuntu runner, proves an enforced build passes, and
-    uploads the runner-accurate file to commit. Locally the equivalent is
-    `./gradlew --write-verification-metadata sha256 clean check
-    publishToMavenLocal -x :integration-tests:test` on Linux, then commit and
-    let CI confirm.
+  - **Generated inside GitLab CI — never locally** (owner directive, HEL-124).
+    Workstation generation is prohibited: a local environment resolves a
+    different variant set (daemon JVM, plugin markers, dokka variants) and the
+    file then rejects the CI build — proven twice. The canonical generator is
+    the **`verification-metadata`** job on the LAN GitLab mirror
+    (`root/rowrelay`, `.gitlab-ci.yml`): it **union-appends** onto the
+    committed file (Gradle's write mode adds entries and never removes them,
+    so entries resolved by other enforcing environments are preserved), proves
+    the enforced build passes on the GitLab runner, and exposes
+    `gradle/verification-metadata.xml` as the job artifact.
+  - **Refresh flow after a dependency change**: push to the GitLab mirror →
+    the job runs → fetch the artifact → commit it **verbatim** to GitHub main
+    → GitHub CI enforces it green. Do not regenerate anywhere else; do not
+    hand-edit the file.
 
 ## SBOM
 
