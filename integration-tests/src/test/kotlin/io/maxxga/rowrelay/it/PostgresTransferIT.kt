@@ -7,6 +7,7 @@ import io.maxxga.rowrelay.jdbc.TransactionPolicy
 import io.maxxga.rowrelay.jdbc.TransactionState
 import io.maxxga.rowrelay.jdbc.TransactionalWriter
 import io.maxxga.rowrelay.postgres.PostgresDialect
+import io.maxxga.rowrelay.postgres.PostgresValueReader
 import io.maxxga.rowrelay.transfer.Mapping
 import io.maxxga.rowrelay.transfer.Transfer
 import org.junit.jupiter.api.AfterAll
@@ -98,6 +99,54 @@ class PostgresTransferIT {
                 rs.next(); assertEquals(0, BigDecimal("777").compareTo(rs.getBigDecimal(1)))
                 val rs2 = st.executeQuery("SELECT count(*) FROM relay_dest"); rs2.next()
                 assertEquals(30, rs2.getInt(1))
+            }
+        }
+    }
+
+    @Test
+    fun `HEL-127 uuid json jsonb and array columns round-trip postgres to postgres`() {
+        pgc.createStatement().use { st ->
+            st.execute("""CREATE TABLE exotic (
+                id INT, u UUID, doc JSON, docb JSONB, nums INT4[], tags TEXT[])""")
+            st.execute("""INSERT INTO exotic VALUES
+                (1, '6ba7b810-9dad-11d1-80b4-00c04fd430c8'::uuid,
+                 '{"a": 1}'::json, '{"b": 2, "a": 1}'::jsonb,
+                 '{10,20,30}'::int4[], '{標籤,y}'::text[])""")
+        }
+        // a SECOND connection is the target (same DB) so the source cursor and
+        // the target inserts don't share one connection.
+        DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password).use { tgt ->
+            val report = Transfer.run(
+                pgc, "SELECT * FROM exotic", emptyMap<String, Any?>(),
+                tgt, PostgresDialect, "exotic_copy",
+                Transfer.Options(sourceValueReader = PostgresValueReader()))
+            assertTrue(report.completed, report.toString())
+            assertEquals(1L, report.rowsAffected)
+
+            // 1) the target columns were recreated as the REAL Postgres types,
+            //    not stringified to TEXT.
+            tgt.createStatement().use { st ->
+                val types = mutableMapOf<String, String>()
+                val rs = st.executeQuery(
+                    "SELECT column_name, udt_name FROM information_schema.columns " +
+                    "WHERE table_name = 'exotic_copy'")
+                while (rs.next()) types[rs.getString(1)] = rs.getString(2)
+                assertEquals("uuid", types["u"])
+                assertEquals("json", types["doc"])
+                assertEquals("jsonb", types["docb"])
+                assertEquals("_int4", types["nums"])   // pgjdbc's array udt name
+                assertEquals("_text", types["tags"])
+            }
+            // 2) the VALUES round-tripped exactly (typed comparisons in-DB).
+            tgt.createStatement().use { st ->
+                val rs = st.executeQuery("""SELECT count(*) FROM exotic_copy WHERE
+                    u = '6ba7b810-9dad-11d1-80b4-00c04fd430c8'::uuid
+                    AND docb = '{"a": 1, "b": 2}'::jsonb
+                    AND doc::jsonb = '{"a": 1}'::jsonb
+                    AND nums = '{10,20,30}'::int4[]
+                    AND tags = '{標籤,y}'::text[]""")
+                rs.next()
+                assertEquals(1, rs.getInt(1))
             }
         }
     }

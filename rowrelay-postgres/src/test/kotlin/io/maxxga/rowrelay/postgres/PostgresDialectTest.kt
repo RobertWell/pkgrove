@@ -30,6 +30,28 @@ class PostgresDialectTest {
     }
 
     @Test
+    fun `HEL-127 uuid, json, jsonb and array target types`() {
+        assertEquals("UUID", PostgresDialect.typeFor(col(ValueKind.OTHER, type = "uuid")))
+        assertEquals("JSON", PostgresDialect.typeFor(col(ValueKind.OTHER, type = "json")))
+        assertEquals("JSONB", PostgresDialect.typeFor(col(ValueKind.OTHER, type = "jsonb")))
+        // pgjdbc names arrays by element type prefixed with '_'
+        assertEquals("int4[]", PostgresDialect.typeFor(col(ValueKind.OTHER, type = "_int4")))
+        assertEquals("text[]", PostgresDialect.typeFor(col(ValueKind.OTHER, type = "_text")))
+        assertEquals("varchar[]", PostgresDialect.typeFor(col(ValueKind.OTHER, type = "varchar[]")))
+        // still null for genuinely unmapped OTHER types
+        assertNull(PostgresDialect.typeFor(col(ValueKind.OTHER, type = "geometry")))
+    }
+
+    @Test
+    fun `HEL-127 uuid text binds to a real UUID`() {
+        val u = "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+        val bound = PostgresDialect.bindValue(u, col(ValueKind.OTHER, type = "uuid"))
+        assertEquals(java.util.UUID.fromString(u), bound)
+        // a non-uuid OTHER string passes through untouched (no pgjdbc needed)
+        assertEquals("plain", PostgresDialect.bindValue("plain", col(ValueKind.TEXT)))
+    }
+
+    @Test
     fun `postgres folds identifiers DOWN before quoting`() {
         val schema = Schema(listOf(
             Column("USER_NAME", ValueKind.TEXT, "VARCHAR", precision = 50),

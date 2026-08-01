@@ -25,6 +25,12 @@ backward-compatible for existing `JdbcReader`/`JdbiReader`/`Transfer` consumers
   executor (bounded per-db concurrency, fail-fast/supervised, cancellation-
   preserving); partitionByChoice; staged SourceFlow→ExecutableFlow types make
   an incomplete flow unrepresentable at the executor. See docs/adr/0001.
+- Postgres adapter: first-class `uuid`, `json`/`jsonb`, and array columns —
+  `PostgresDialect.typeFor` recreates the real Postgres type (not TEXT) and
+  `bindValue` reconstructs the value from text (UUID / typed PGobject), with
+  `PostgresValueReader` normalizing driver values (PGobject/Array → text, no
+  warning). Live PG→PG round-trip proven (integration-tests). Foreign-DB targets
+  land these as text.
 - Security: pgjdbc 42.7.3 -> 42.7.13 (CVE-2026-42198, CVE-2026-54291 HIGH).
 - CI: publish gate + ci `check` aligned (integration-tests run informationally;
   the reliable unit/module/dialect + compiled-doc-example suite is the gate);

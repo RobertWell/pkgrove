@@ -51,7 +51,39 @@ object PostgresDialect : SqlDialect {
                 else -> "TIMESTAMP"
             }
         }
-        ValueKind.OTHER -> null
+        // HEL-127: uuid / json / jsonb / arrays arrive as JDBC OTHER or ARRAY
+        // (ValueKind.OTHER). Recreate them faithfully on a Postgres target from
+        // the driver's own type name rather than rejecting the column.
+        ValueKind.OTHER -> postgresTypeName(column)
+    }
+
+    /** DDL for a Postgres OTHER/ARRAY column, from its pgjdbc type name; null if
+     *  genuinely unmappable (the transfer layer then applies ConversionPolicy). */
+    private fun postgresTypeName(column: Column): String? {
+        val t = column.typeName.lowercase()
+        return when {
+            t == "uuid" -> "UUID"
+            t == "json" -> "JSON"
+            t == "jsonb" -> "JSONB"
+            // pgjdbc names an array by its element type prefixed with '_'
+            // ("_int4", "_text", ...). Rebuild the canonical "<elem>[]" form,
+            // which Postgres accepts as a column type.
+            t.startsWith("_") && t.length > 1 -> t.substring(1) + "[]"
+            // already an explicit array spelling ("int4[]", "text[]")
+            t.endsWith("[]") -> t
+            else -> null
+        }
+    }
+
+    /** True when [column] is a Postgres uuid/json/jsonb/array — its value is
+     *  carried as text by [PostgresValueReader] and needs a typed bind. */
+    private fun arrayCast(column: Column): String? {
+        val t = column.typeName.lowercase()
+        return when {
+            t.startsWith("_") && t.length > 1 -> t.substring(1) + "[]"
+            t.endsWith("[]") -> t
+            else -> null
+        }
     }
 
     /** ON CONFLICT upsert — requires a unique/PK constraint on [keyColumns]. */
@@ -73,11 +105,29 @@ object PostgresDialect : SqlDialect {
                "ON CONFLICT ($keys) $conflict"
     }
 
-    override fun bindValue(value: Any?, column: Column): Any? = when (value) {
-        is java.time.LocalDateTime -> java.sql.Timestamp.valueOf(value)
-        is java.time.LocalDate -> java.sql.Date.valueOf(value)
-        is java.time.LocalTime -> java.sql.Time.valueOf(value)
-        is java.time.OffsetDateTime -> java.sql.Timestamp.from(value.toInstant())
-        else -> value
+    override fun bindValue(value: Any?, column: Column): Any? {
+        // HEL-127: reconstruct uuid/json/jsonb/array from the text the
+        // PostgresValueReader carried, so a String round-trips into the exact
+        // Postgres type. A genuine UUID/PGobject/Array value passes through.
+        if (value is String) {
+            val t = column.typeName.lowercase()
+            when {
+                t == "uuid" -> return java.util.UUID.fromString(value)
+                t == "json" || t == "jsonb" -> return pgObject(t, value)
+                else -> arrayCast(column)?.let { return pgObject(it, value) }
+            }
+        }
+        return when (value) {
+            is java.time.LocalDateTime -> java.sql.Timestamp.valueOf(value)
+            is java.time.LocalDate -> java.sql.Date.valueOf(value)
+            is java.time.LocalTime -> java.sql.Time.valueOf(value)
+            is java.time.OffsetDateTime -> java.sql.Timestamp.from(value.toInstant())
+            else -> value
+        }
     }
+
+    /** A typed pgjdbc value: the driver sends [text] with an explicit `::[type]`
+     *  cast, so json/jsonb/array literals land in the right column type. */
+    private fun pgObject(type: String, text: String): Any =
+        org.postgresql.util.PGobject().apply { this.type = type; this.value = text }
 }
