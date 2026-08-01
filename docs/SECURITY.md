@@ -59,10 +59,17 @@ vulnerability-free.
   --write-locks`) and review the lockfile diff in the PR.
 - Repositories are explicitly `mavenCentral()` only (plus GitHub Packages for
   publishing); no fallback repositories exist in the build.
-- Full checksum `verification-metadata.xml` is deliberately deferred until
-  the dependency set stabilizes post-1.0 (locking already pins exact
-  versions; verification metadata adds checksum pinning at meaningful
-  maintenance cost while the graph is still moving). Revisit at 1.0.
+- **Artifact integrity**: `gradle/verification-metadata.xml` pins a **SHA-256
+  checksum for every resolved dependency + POM** (211 components across the
+  check / dokka / SBOM / publish / integration-test graphs), with
+  `<verify-metadata>true</verify-metadata>` so a tampered or substituted
+  artifact fails the build — this is *integrity* verification, distinct from
+  CVE scanning (which asks "is the artifact vulnerable"; this asks "is the
+  artifact the one we expect"). Signature verification is off (checksum-only)
+  to avoid a PGP keyring dependency; revisit signed verification at 1.0.
+  When dependencies change, regenerate with
+  `./gradlew --write-verification-metadata sha256 check dokkaJavadoc cyclonedxBom`
+  and review the diff in the PR (same discipline as the lockfiles).
 
 ## SBOM
 
