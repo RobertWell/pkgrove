@@ -47,6 +47,19 @@ object Transfer {
     )
 
     /**
+     * The target-write seam (HEL-160). Transfer prepares the plan, establishes
+     * the table, and streams mapped/bind-adapted batches; HOW those batches are
+     * written to the target is pluggable so a JDBI [org.jdbi.v3.core.Handle]
+     * transfer can honor caller-owned transactions without unwrapping to the raw
+     * connection. The default writer is the JDBC batch writer; the JDBI facade
+     * substitutes one that routes through JdbiBatchWriter.
+     */
+    fun interface TargetWriter {
+        fun write(dml: String, batches: Sequence<RowBatch>,
+                  options: JdbcBatchWriter.WriteOptions): OperationReport
+    }
+
+    /**
      * Run one transfer with NAMED source parameters (`:user_name`) — the
      * recommended form. See [NamedSql] for parsing/missing-name semantics.
      */
@@ -54,12 +67,34 @@ object Transfer {
     @JvmOverloads
     fun run(source: Connection, sourceSql: String, namedParams: Map<String, Any?>,
             target: Connection, targetDialect: SqlDialect, targetTable: String,
-            options: Options = Options()): OperationReport {
+            options: Options = Options()): OperationReport =
+        runNamed(source, sourceSql, namedParams, target, targetDialect, targetTable,
+                 options, TargetWriter { dml, b, o -> JdbcBatchWriter.write(target, dml, b, o) })
+
+    /**
+     * HEL-160: run a transfer whose target write is performed by [writer], with
+     * DDL (table establishment) executed on [ddlConnection]. This is the seam the
+     * JDBI facade uses to route writes through a caller's [org.jdbi.v3.core.Handle]
+     * while reusing the entire read/map/adapt/establish pipeline. Named-parameter
+     * form; [ddlConnection] and the connection [writer] targets must be the same
+     * physical connection.
+     */
+    @JvmStatic
+    @JvmOverloads
+    fun runToWriter(source: Connection, sourceSql: String, namedParams: Map<String, Any?>,
+                    ddlConnection: Connection, targetDialect: SqlDialect, targetTable: String,
+                    options: Options = Options(), writer: TargetWriter): OperationReport =
+        runNamed(source, sourceSql, namedParams, ddlConnection, targetDialect, targetTable,
+                 options, writer)
+
+    private fun runNamed(source: Connection, sourceSql: String, namedParams: Map<String, Any?>,
+                         ddlConnection: Connection, targetDialect: SqlDialect, targetTable: String,
+                         options: Options, writer: TargetWriter): OperationReport {
         val named = io.maxxga.rowrelay.jdbc.NamedSql.parse(sourceSql)
         val preWarnings = mutableListOf<DataWarning>()
         val values = named.bind(namedParams) { preWarnings += it }
-        return runPositional(source, named.sql, values, target, targetDialect,
-                             targetTable, options, preWarnings)
+        return runPositional(source, named.sql, values, ddlConnection, targetDialect,
+                             targetTable, options, preWarnings, writer)
     }
 
     /**
@@ -74,11 +109,13 @@ object Transfer {
             target: Connection, targetDialect: SqlDialect, targetTable: String,
             options: Options = Options()): OperationReport =
         runPositional(source, sourceSql, sourceParams, target, targetDialect,
-                      targetTable, options, emptyList())
+                      targetTable, options, emptyList(),
+                      TargetWriter { dml, b, o -> JdbcBatchWriter.write(target, dml, b, o) })
 
     private fun runPositional(source: Connection, sourceSql: String, sourceParams: List<Any?>,
                               target: Connection, targetDialect: SqlDialect, targetTable: String,
-                              options: Options, preWarnings: List<DataWarning>): OperationReport {
+                              options: Options, preWarnings: List<DataWarning>,
+                              writer: TargetWriter): OperationReport {
         val warnings = preWarnings.toMutableList()
         JdbcReader.open(
             source, sourceSql, sourceParams,
@@ -127,8 +164,8 @@ object Transfer {
                     })
                 })
             }
-            val report = JdbcBatchWriter.write(
-                target, dml, outBatches,
+            val report = writer.write(
+                dml, outBatches,
                 JdbcBatchWriter.WriteOptions(commitPolicy = options.commitPolicy,
                                              cancelToken = options.cancelToken,
                                              onProgress = options.onProgress))

@@ -4,6 +4,7 @@ import io.maxxga.rowrelay.duckdb.DuckDbDialect
 import io.maxxga.rowrelay.jdbc.JdbcBatchWriter
 import io.maxxga.rowrelay.jdbc.JdbcReader
 import io.maxxga.rowrelay.jdbc.SqlDialect
+import io.maxxga.rowrelay.jdbi.JdbiTransfer
 import io.maxxga.rowrelay.oracle.OracleDialect
 import io.maxxga.rowrelay.oracle.OracleValueReader
 import io.maxxga.rowrelay.transfer.Mapping
@@ -12,7 +13,9 @@ import org.jdbi.v3.core.Jdbi
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertArrayEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
@@ -154,6 +157,73 @@ class OracleTransferIT {
                 val rs2 = st.executeQuery("SELECT count(*) FROM relay_dest")
                 rs2.next()
                 assertEquals(40, rs2.getInt(1))                                       // w39 inserted
+            }
+        }
+    }
+
+    // Scenario 3b (HEL-160): DuckDB -> Oracle through the first-class JDBI transfer
+    // facade, with the write bound to a caller-owned JDBI transaction. The whole
+    // transfer (table establish + inserts) is atomic with the caller's transaction:
+    // a rollback leaves nothing, a commit persists everything — no handle.connection
+    // unwrap.
+    @Test
+    fun `duckdb to oracle via jdbi transfer facade honors the caller transaction`() {
+        freshDuck().use { duck ->
+            duck.createStatement().use { st ->
+                st.execute("CREATE TABLE jsrc (source_user VARCHAR, source_score DECIMAL(10,2))")
+                st.execute("INSERT INTO jsrc SELECT 'j' || range, range * 2.5 FROM range(20)")
+            }
+            oconn.createStatement().use {
+                it.execute("CREATE TABLE jdbi_dest (user_name VARCHAR2(50), score NUMBER(10,2))")
+            }
+            val mapping = Mapping.build {
+                "source_user" mapsTo "user_name"
+                "source_score" mapsTo "score"
+            }
+            val jdbi = Jdbi.create(oracle.jdbcUrl, oracle.username, oracle.password)
+
+            // (a) caller rolls back -> the appended rows never persist
+            class Abort : RuntimeException()
+            assertThrows(Abort::class.java) {
+                jdbi.useHandle<Exception> { h ->
+                    h.useTransaction<Exception> { txh ->
+                        JdbiTransfer.run(duck, "SELECT * FROM jsrc", emptyMap(),
+                            txh, OracleDialect, "jdbi_dest",
+                            Transfer.Options(mode = SqlDialect.TargetMode.APPEND, mapping = mapping))
+                        throw Abort()
+                    }
+                }
+            }
+            oconn.createStatement().use { st ->
+                val rs = st.executeQuery("SELECT count(*) FROM jdbi_dest"); rs.next()
+                assertEquals(0, rs.getInt(1))   // rolled back with the caller
+            }
+
+            // (b) PerChunk inside the caller's transaction is rejected loudly
+            jdbi.useHandle<Exception> { h ->
+                h.useTransaction<Exception> { txh ->
+                    assertThrows(IllegalArgumentException::class.java) {
+                        JdbiTransfer.run(duck, "SELECT * FROM jsrc", emptyMap(),
+                            txh, OracleDialect, "jdbi_dest",
+                            Transfer.Options(mode = SqlDialect.TargetMode.APPEND, mapping = mapping,
+                                commitPolicy = JdbcBatchWriter.CommitPolicy.PerChunk(5)))
+                    }
+                }
+            }
+
+            // (c) caller commits -> all rows persist through the JDBI facade
+            val report = jdbi.withHandle<io.maxxga.rowrelay.core.OperationReport, Exception> { h ->
+                h.inTransaction<io.maxxga.rowrelay.core.OperationReport, Exception> { txh ->
+                    JdbiTransfer.run(duck, "SELECT * FROM jsrc", emptyMap(),
+                        txh, OracleDialect, "jdbi_dest",
+                        Transfer.Options(mode = SqlDialect.TargetMode.APPEND, mapping = mapping))
+                }
+            }
+            assertTrue(report.completed)
+            assertEquals(20L, report.rowsAffected)
+            oconn.createStatement().use { st ->
+                val rs = st.executeQuery("SELECT count(*) FROM jdbi_dest"); rs.next()
+                assertEquals(20, rs.getInt(1))
             }
         }
     }

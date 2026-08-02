@@ -1,17 +1,21 @@
 package io.maxxga.rowrelay.it
 
 import io.maxxga.rowrelay.duckdb.DuckDbDialect
+import io.maxxga.rowrelay.jdbc.JdbcBatchWriter
 import io.maxxga.rowrelay.jdbc.JdbcReader
 import io.maxxga.rowrelay.jdbc.SqlDialect
 import io.maxxga.rowrelay.jdbc.TransactionPolicy
 import io.maxxga.rowrelay.jdbc.TransactionState
 import io.maxxga.rowrelay.jdbc.TransactionalWriter
+import io.maxxga.rowrelay.jdbi.JdbiTransfer
 import io.maxxga.rowrelay.postgres.PostgresDialect
 import io.maxxga.rowrelay.postgres.PostgresValueReader
 import io.maxxga.rowrelay.transfer.Mapping
 import io.maxxga.rowrelay.transfer.Transfer
+import org.jdbi.v3.core.Jdbi
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
@@ -99,6 +103,70 @@ class PostgresTransferIT {
                 rs.next(); assertEquals(0, BigDecimal("777").compareTo(rs.getBigDecimal(1)))
                 val rs2 = st.executeQuery("SELECT count(*) FROM relay_dest"); rs2.next()
                 assertEquals(30, rs2.getInt(1))
+            }
+        }
+    }
+
+    // HEL-160: JDBI-path transfer INTO Postgres through the first-class facade,
+    // bound to a caller-owned JDBI transaction (no handle.connection unwrap).
+    @Test
+    fun `duckdb to postgres via jdbi transfer facade honors the caller transaction`() {
+        DriverManager.getConnection("jdbc:duckdb:").use { duck ->
+            duck.createStatement().use { st ->
+                st.execute("CREATE TABLE jsrc (source_user VARCHAR, source_score DECIMAL(10,2))")
+                st.execute("INSERT INTO jsrc SELECT 'j' || range, range * 1.5 FROM range(25)")
+            }
+            pgc.createStatement().use {
+                it.execute("CREATE TABLE jdbi_dest (user_name VARCHAR(50), score NUMERIC(10,2))")
+            }
+            val mapping = Mapping.build {
+                "source_user" mapsTo "user_name"
+                "source_score" mapsTo "score"
+            }
+            val jdbi = Jdbi.create(pg.jdbcUrl, pg.username, pg.password)
+
+            // (a) rollback -> nothing persists
+            class Abort : RuntimeException()
+            assertThrows(Abort::class.java) {
+                jdbi.useHandle<Exception> { h ->
+                    h.useTransaction<Exception> { txh ->
+                        JdbiTransfer.run(duck, "SELECT * FROM jsrc", emptyMap<String, Any?>(),
+                            txh, PostgresDialect, "jdbi_dest",
+                            Transfer.Options(mode = SqlDialect.TargetMode.APPEND, mapping = mapping))
+                        throw Abort()
+                    }
+                }
+            }
+            pgc.createStatement().use { st ->
+                val rs = st.executeQuery("SELECT count(*) FROM jdbi_dest"); rs.next()
+                assertEquals(0, rs.getInt(1))
+            }
+
+            // (b) PerChunk inside the caller's transaction is rejected
+            jdbi.useHandle<Exception> { h ->
+                h.useTransaction<Exception> { txh ->
+                    assertThrows(IllegalArgumentException::class.java) {
+                        JdbiTransfer.run(duck, "SELECT * FROM jsrc", emptyMap<String, Any?>(),
+                            txh, PostgresDialect, "jdbi_dest",
+                            Transfer.Options(mode = SqlDialect.TargetMode.APPEND, mapping = mapping,
+                                commitPolicy = JdbcBatchWriter.CommitPolicy.PerChunk(5)))
+                    }
+                }
+            }
+
+            // (c) commit -> all rows persist
+            val report = jdbi.withHandle<io.maxxga.rowrelay.core.OperationReport, Exception> { h ->
+                h.inTransaction<io.maxxga.rowrelay.core.OperationReport, Exception> { txh ->
+                    JdbiTransfer.run(duck, "SELECT * FROM jsrc", emptyMap<String, Any?>(),
+                        txh, PostgresDialect, "jdbi_dest",
+                        Transfer.Options(mode = SqlDialect.TargetMode.APPEND, mapping = mapping))
+                }
+            }
+            assertTrue(report.completed)
+            assertEquals(25L, report.rowsAffected)
+            pgc.createStatement().use { st ->
+                val rs = st.executeQuery("SELECT count(*) FROM jdbi_dest"); rs.next()
+                assertEquals(25, rs.getInt(1))
             }
         }
     }
