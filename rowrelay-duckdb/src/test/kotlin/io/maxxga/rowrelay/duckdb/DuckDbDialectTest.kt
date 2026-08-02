@@ -23,8 +23,14 @@ class DuckDbDialectTest {
 
     @Test
     fun `numeric precision and scale branches`() {
-        // no precision -> widest safe general numeric
-        assertEquals("DOUBLE", DuckDbDialect.typeFor(col(ValueKind.NUMERIC)))
+        // no precision + no integer type-name hint -> DOUBLE (genuine float)
+        assertEquals("DOUBLE", DuckDbDialect.typeFor(col(ValueKind.NUMERIC, type = "DOUBLE")))
+        // HEL-168: no precision but an integer source type NAME -> preserve integer-ness
+        // (defaulting to DOUBLE silently rounds large integers, e.g. BIGINT Long.MAX)
+        assertEquals("BIGINT", DuckDbDialect.typeFor(col(ValueKind.NUMERIC, type = "BIGINT")))
+        assertEquals("INTEGER", DuckDbDialect.typeFor(col(ValueKind.NUMERIC, type = "INTEGER")))
+        assertEquals("SMALLINT", DuckDbDialect.typeFor(col(ValueKind.NUMERIC, type = "SMALLINT")))
+        assertEquals("HUGEINT", DuckDbDialect.typeFor(col(ValueKind.NUMERIC, type = "HUGEINT")))
         // scale > 0 -> DECIMAL, precision/scale coerced to DuckDB max (38 / 37)
         assertEquals("DECIMAL(10,2)", DuckDbDialect.typeFor(col(ValueKind.NUMERIC, p = 10, s = 2)))
         assertEquals("DECIMAL(38,37)", DuckDbDialect.typeFor(col(ValueKind.NUMERIC, p = 50, s = 40)))
@@ -91,8 +97,10 @@ class DuckDbDialectTest {
         assertEquals(java.sql.Date.valueOf(ld),
             DuckDbDialect.bindValue(ld, col(ValueKind.TEMPORAL, type = "DATE")))
 
-        val lt = java.time.LocalTime.of(10, 30, 0)
-        assertEquals(java.sql.Time.valueOf(lt),
+        // HEL-168: LocalTime binds as a lossless ISO string, NOT java.sql.Time
+        // (which is second-precision + timezone-shifted).
+        val lt = java.time.LocalTime.parse("10:30:00.123456")
+        assertEquals("10:30:00.123456",
             DuckDbDialect.bindValue(lt, col(ValueKind.TEMPORAL, type = "TIME")))
 
         val odt = java.time.OffsetDateTime.parse("2026-08-02T10:30:00+02:00")

@@ -300,4 +300,124 @@ class OracleTransferIT {
             assertEquals(0, rs.getInt(1))           // all-or-nothing: nothing committed
         }
     }
+
+    // ---- HEL-168: parameterized Oracle ↔ DuckDB type-fidelity matrix ----
+    // Each case seeds one typed Oracle column, transfers Oracle→DuckDB, and
+    // asserts the read-back DuckDB value is faithful (no truncation/rounding/
+    // tz-shift/stringification). Boundary fixtures: unicode, empty, big integer,
+    // fractional temporal, TZ offset, large CLOB, binary zero bytes/empty.
+
+    class MCase(val label: String, val oracleType: String, val insertSql: String,
+                val check: (Any?) -> Unit) { override fun toString() = label }
+
+    private fun oracleToDuck(): List<MCase> = listOf(
+        MCase("varchar2 unicode", "VARCHAR2(50)", "'安妮 Ann'") { assertEquals("安妮 Ann", it) },
+        MCase("nvarchar2 unicode", "NVARCHAR2(50)", "N'標籤 café'") { assertEquals("標籤 café", it) },
+        MCase("char fixed-width padded", "CHAR(8)", "'ab'") {
+            // Oracle blank-pads CHAR; padding is preserved as-read (documented).
+            assertEquals("ab", (it as String).trimEnd()); assertEquals(8, it.length)
+        },
+        MCase("number big integer", "NUMBER(38)", "99999999999999999999999999999999999999") {
+            assertEquals(0, java.math.BigDecimal("99999999999999999999999999999999999999")
+                .compareTo(it as java.math.BigDecimal))
+        },
+        MCase("number decimal", "NUMBER(10,2)", "12.34") {
+            assertEquals(0, BigDecimal("12.34").compareTo(it as BigDecimal))
+        },
+        MCase("binary_double", "BINARY_DOUBLE", "3.141592653589793d") {
+            assertEquals(3.141592653589793, it)
+        },
+        MCase("date carries time", "DATE",
+              "TO_DATE('2026-08-02 09:15:30','YYYY-MM-DD HH24:MI:SS')") {
+            assertEquals(java.time.LocalDateTime.parse("2026-08-02T09:15:30"), it)
+        },
+        MCase("timestamp fractional", "TIMESTAMP",
+              "TIMESTAMP '2026-08-02 13:45:30.123456'") {
+            assertEquals(java.time.LocalDateTime.parse("2026-08-02T13:45:30.123456"), it)
+        },
+        MCase("timestamp with time zone", "TIMESTAMP WITH TIME ZONE",
+              "TIMESTAMP '2026-08-02 13:45:30.123456 +02:00'") {
+            assertEquals(java.time.OffsetDateTime.parse("2026-08-02T13:45:30.123456+02:00").toInstant(),
+                (it as java.time.OffsetDateTime).toInstant())
+        },
+        MCase("clob large with newlines", "CLOB",
+              "'line1' || CHR(10) || RPAD('x', 8000, 'x')") {
+            val s = it as String
+            assertTrue(s.startsWith("line1\n")); assertEquals(6 + 8000, s.length)
+        },
+        MCase("blob bytes", "BLOB", "HEXTORAW('DEADBEEF')") {
+            assertArrayEquals(byteArrayOf(0xDE.toByte(), 0xAD.toByte(), 0xBE.toByte(), 0xEF.toByte()),
+                it as ByteArray)
+        },
+        MCase("raw bytes", "RAW(4)", "HEXTORAW('00FF00FF')") {
+            assertArrayEquals(byteArrayOf(0, 0xFF.toByte(), 0, 0xFF.toByte()), it as ByteArray)
+        },
+    )
+
+    @org.junit.jupiter.params.ParameterizedTest(name = "oracle->duckdb: {0}")
+    @org.junit.jupiter.params.provider.MethodSource("oracleToDuck")
+    fun `oracle to duckdb type matrix`(c: MCase) {
+        val tbl = "tm_" + c.label.replace(Regex("[^a-zA-Z0-9]"), "_")
+        oconn.createStatement().use { st ->
+            runCatching { st.execute("DROP TABLE $tbl") }
+            st.execute("CREATE TABLE $tbl (v ${c.oracleType})")
+            st.execute("INSERT INTO $tbl (v) VALUES (${c.insertSql})")
+        }
+        freshDuck().use { duck ->
+            Transfer.run(oconn, "SELECT v FROM $tbl", emptyMap(), duck, DuckDbDialect, "t", readOracle)
+            JdbcReader.open(duck, "SELECT v FROM \"t\"").use { rows ->
+                c.check(rows.toList().single()["v"])
+            }
+            // NULL of the same type also round-trips as null (not a failure)
+            oconn.createStatement().use { it.execute("INSERT INTO $tbl (v) VALUES (NULL)") }
+            Transfer.run(oconn, "SELECT v FROM $tbl WHERE v IS NULL", emptyMap(),
+                         duck, DuckDbDialect, "tn", readOracle)
+            JdbcReader.open(duck, "SELECT v FROM \"tn\"").use { rows ->
+                assertNull(rows.toList().single()["v"])
+            }
+        }
+    }
+
+    // DuckDB → Oracle round trip: create in DuckDB, transfer to Oracle (APPEND),
+    // upsert one row, read back through Oracle — exercises insert + update/upsert
+    // + comparison for the core cross-writable types.
+    @Test
+    fun `duckdb to oracle type round trip with upsert`() {
+        freshDuck().use { duck ->
+            duck.createStatement().use { st ->
+                st.execute("""CREATE TABLE d (k VARCHAR, txt VARCHAR, num DECIMAL(12,3),
+                              big BIGINT, ts TIMESTAMP, bin BLOB)""")
+                st.execute("""INSERT INTO d VALUES
+                    ('a', '標籤 café', 123.456, 9223372036854775807,
+                     TIMESTAMP '2026-08-02 01:02:03.456789', '\xDE\xAD'::BLOB)""")
+            }
+            oconn.createStatement().use {
+                it.execute("""CREATE TABLE d_dest (k VARCHAR2(10) PRIMARY KEY, txt NVARCHAR2(50),
+                              num NUMBER(12,3), big NUMBER(38), ts TIMESTAMP, bin BLOB)""")
+            }
+            val ins = Transfer.run(duck, "SELECT * FROM d", emptyMap<String, Any?>(),
+                oconn, OracleDialect, "d_dest",
+                Transfer.Options(mode = SqlDialect.TargetMode.APPEND))
+            assertEquals(1L, ins.rowsAffected)
+
+            // change the numeric + upsert on the key -> MERGE
+            duck.createStatement().use { it.execute("UPDATE d SET num = 999.999 WHERE k = 'a'") }
+            val up = Transfer.run(duck, "SELECT * FROM d", emptyMap<String, Any?>(),
+                oconn, OracleDialect, "d_dest",
+                Transfer.Options(mode = SqlDialect.TargetMode.APPEND, upsertKeys = listOf("k")))
+            assertTrue(up.completed)
+
+            oconn.createStatement().use { st ->
+                val rs = st.executeQuery("SELECT txt, num, big, ts, bin FROM d_dest WHERE k = 'a'")
+                rs.next()
+                assertEquals("標籤 café", rs.getString("txt"))                       // unicode via NVARCHAR2
+                assertEquals(0, BigDecimal("999.999").compareTo(rs.getBigDecimal("num")))  // upsized value
+                assertEquals(0, BigDecimal("9223372036854775807").compareTo(rs.getBigDecimal("big"))) // Long.MAX exact
+                assertEquals(java.time.LocalDateTime.parse("2026-08-02T01:02:03.456789"),
+                             rs.getTimestamp("ts").toLocalDateTime())               // fractional preserved
+                assertArrayEquals(byteArrayOf(0xDE.toByte(), 0xAD.toByte()), rs.getBytes("bin"))
+                assertEquals(1, st.executeQuery("SELECT count(*) FROM d_dest").let { it.next(); it.getInt(1) })
+            }
+        }
+    }
 }

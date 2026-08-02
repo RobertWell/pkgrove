@@ -48,10 +48,29 @@ interface SqlDialect {
     /** How the target table is established. */
     enum class TargetMode { CREATE, CREATE_OR_REPLACE, APPEND, TEMPORARY, FAIL_IF_EXISTS }
 
+    /**
+     * HEL-168: a clear, actionable error for a column this dialect cannot
+     * represent — names the column, its common [ValueKind], the SOURCE database
+     * type name, precision/scale/timeZoned context, and a concrete adapter path,
+     * so a caller never has to guess why a transfer refused a column.
+     */
+    fun unsupportedTypeMessage(column: Column): String {
+        val ctx = buildList {
+            column.precision?.let { add("precision=$it") }
+            column.scale?.let { add("scale=$it") }
+            if (column.timeZoned == true) add("timeZoned")
+        }.let { if (it.isEmpty()) "" else " [${it.joinToString(", ")}]" }
+        return "no faithful $name type for column '${column.name}' " +
+               "(kind=${column.kind}, source type '${column.typeName}'$ctx). " +
+               "Adapter path: set ConversionPolicy.STRINGIFY to carry it as text (with a " +
+               "warning), or SKIP to drop it; for a first-class mapping, add the type to " +
+               "${name}Dialect.typeFor (and a source ValueReader.normalize case if the JDBC " +
+               "value needs coercion)."
+    }
+
     fun createTableDdl(table: String, schema: Schema, mode: TargetMode): String {
         val cols = schema.columns.joinToString(", ") { c ->
-            val t = typeFor(c) ?: throw ConversionException(
-                "no ${name} type for column kind=${c.kind} (${c.typeName})", c.name)
+            val t = typeFor(c) ?: throw ConversionException(unsupportedTypeMessage(c), c.name)
             "${quoteIdent(c.name, "column")} $t"
         }
         val target = quoteIdent(table, "table")
@@ -90,7 +109,7 @@ interface SqlDialect {
             if (typeFor(c) != null) return@mapNotNull c
             when (policy) {
                 ConversionPolicy.REJECT -> throw ConversionException(
-                    "column has no faithful $name representation and policy is REJECT", c.name)
+                    unsupportedTypeMessage(c) + " (policy is REJECT)", c.name)
                 ConversionPolicy.STRINGIFY -> {
                     warn(DataWarning("stringified", "no faithful $name type; carried as text", c.name))
                     c.copy(kind = io.maxxga.rowrelay.core.ValueKind.TEXT, typeName = "VARCHAR",
