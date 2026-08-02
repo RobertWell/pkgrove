@@ -204,6 +204,17 @@ configure(subprojects.filter { it.name.startsWith("rowrelay-") }) {
                     }
                 }
             }
+            // HEL-189: the Central PORTAL is not a Maven PUT endpoint — a release
+            // is staged into a local maven-layout tree, zipped, and POSTed to
+            // /api/v1/publisher/upload. Gated on CENTRAL_BUNDLE_DIR (release
+            // tooling only; inert otherwise).
+            val bundleDir = System.getenv("CENTRAL_BUNDLE_DIR")
+            if (!bundleDir.isNullOrBlank()) {
+                maven {
+                    name = "CentralBundle"
+                    url = uri("file://$bundleDir")
+                }
+            }
         }
     }
 

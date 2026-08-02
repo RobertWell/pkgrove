@@ -7,7 +7,7 @@ RowRelay publishes to three targets, all from the immutable-release version
 |---|---|---|---|
 | **LAN GitLab** Maven registry (`root/rowrelay`) | LAN only | none (anonymous) | **live** (`.gitlab-ci.yml`) |
 | **GitHub Packages** (`maven.pkg.github.com/RobertWell/rowrelay`) | public repo | token (`read:packages`) even for public | **live** (`publish.yml`) |
-| **Maven Central** | fully public | **none** (the goal) | **namespace + token READY; pending PGP signing key only** |
+| **Maven Central** | fully public | **none** | **LIVE — 0.3.0 published 2026-08-02** |
 
 ## Maven Central — the public, tokenless goal
 
@@ -31,13 +31,13 @@ Owner chose **MIT** (2026-08). `LICENSE` now holds the full MIT text
 on every published artifact (overridable via `-Prowrelay.license.name/.url`).
 No further license input needed.
 
-### Prerequisite 3 — Signing key (secret)
-Central requires PGP-signed artifacts. Generate a key, publish the public half
-to a keyserver, and provide the private half to CI:
-- `SIGNING_KEY` — the ASCII-armored private key (`gpg --armor --export-secret-keys`).
-- `SIGNING_PASSWORD` — its passphrase.
-The Gradle-core `signing` plugin (no new dependency → passes the supply-chain
-gate) signs `publishToMavenCentral` when `SIGNING_KEY` is present, and is inert
+### Prerequisite 3 — Signing key — **IN HAND** ✅ (2026-08-02)
+ed25519 key `DAE1EF2D001D6B5FABFF3F1C0E8253CF6B4EBD3B`, uid
+`RobertWell <bioresearch567@gmail.com>`; public half on keyserver.ubuntu.com,
+private half + passphrase on the LAN box at `~/.config/rowrelay/signing.env`
+(chmod 600; sets `SIGNING_KEY`/`SIGNING_PASSWORD`; consume by sourcing). The
+public key is also archived at `~/.config/rowrelay/rowrelay-signing-public.asc`.
+The Gradle-core `signing` plugin signs when `SIGNING_KEY` is present, inert
 otherwise.
 
 ### Prerequisite 4 — Central Portal token — **IN HAND** ✅ (2026-08-02)
@@ -49,15 +49,25 @@ the Portal `published` API answered `200` with the token and `401` without.
 The prod-side drop file it arrived in has been deleted. For CI publishing,
 mirror these three values as masked CI variables when the release is cut.
 
-### Release flow (once the above are in place)
+### Release flow (the PROVEN 0.3.0 path — Portal bundle upload)
+The Central **Portal** is not a Maven PUT endpoint; a release is a signed bundle
+zip POSTed to the Publisher API:
 1. Bump to the next immutable version (build.gradle.kts + CHANGELOG); no `-SNAPSHOT`.
-2. Refresh dependency-verification metadata via the GitLab job (see `docs/SECURITY.md`).
-3. Tag `vX.Y.Z`. CI runs the gate (`check` + CVE/SBOM + verification), then:
-   `./gradlew publishMavenPublicationToMavenCentralRepository -Prowrelay.license.name=… -Prowrelay.license.url=…`
-   with the signing + Central secrets in the env.
-4. Validate the staged bundle on the Portal (POM completeness, signatures,
-   sources+javadoc jars — all already produced), then **promote/release**.
-5. Verify a clean `mavenCentral()` consumer resolves it with no token.
+2. `source ~/.config/rowrelay/central.env ~/.config/rowrelay/signing.env` and set
+   `CENTRAL_BUNDLE_DIR` to a scratch dir, then
+   `./gradlew publishMavenPublicationToCentralBundleRepository` — publishes every
+   module (jar + sources + javadoc + pom + module metadata) with `.asc`
+   signatures and checksums into a maven-layout tree.
+3. Strip Portal-forbidden files (`maven-metadata.xml*`, `*.asc.md5/sha*`), zip
+   the `com/` tree, and upload:
+   `curl -H "Authorization: Bearer $(printf '%s:%s' "$MAVEN_CENTRAL_USERNAME" "$MAVEN_CENTRAL_PASSWORD" | base64 -w0)" -F bundle=@bundle.zip "https://central.sonatype.com/api/v1/publisher/upload?name=rowrelay-X.Y.Z&publishingType=AUTOMATIC"`
+   → returns a deploymentId.
+4. Poll `POST /api/v1/publisher/status?id=<deploymentId>` until
+   `PUBLISHED` (AUTOMATIC publishes on successful validation) or `FAILED`
+   (errors list names the exact file/problem).
+5. Verify a clean `mavenCentral()` consumer resolves it with no token
+   (repo1.maven.org propagation lands within minutes of PUBLISHED).
+6. Tag `vX.Y.Z` and push; GitLab/GitHub Packages publishes ride their existing CI.
 
 ### Already wired (no owner input needed)
 - POM completeness: `name`, `description`, `url`, `developers`, `scm`,

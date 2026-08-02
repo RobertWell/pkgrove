@@ -9,7 +9,7 @@ MINOR = backward-compatible downstream enhancement, PATCH = backward-compatible
 fix; `0.x` is not a blanket exception for breaking changes. Development builds
 carry commit identity (`-Pdev` → `<release>-dev.<sha>`) and are never published.
 
-## 0.3.0 (unreleased)
+## 0.3.0 (2026-08-02)
 
 **Coordinate migration (HEL-189):** the Maven `groupId` moves from
 `io.maxxga.rowrelay` to **`com.pkgrove`** — the namespace verified on Maven
