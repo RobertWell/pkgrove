@@ -27,7 +27,10 @@ tasks.cyclonedxBom {
 // commit identity instead (`-Pdev` → `<release>-dev.<shortSha>`), and such
 // coordinates are never published (the publish workflow refuses any version
 // containing `-SNAPSHOT`/`-dev`).
-val rowrelayRelease = "0.2.0"
+// 0.3.0 = first release under the Maven-Central-verified namespace com.pkgrove
+// (HEL-189). 0.2.0 artifacts remain immutable at io.maxxga.rowrelay in the
+// GitLab/GitHub registries; consumers migrate coordinates on upgrade.
+val rowrelayRelease = "0.3.0"
 
 /** Short commit sha for `-Pdev` local builds; safe fallback if git is absent so
  *  a dev build never fails on version resolution. Only invoked when `-Pdev` is
@@ -42,7 +45,10 @@ fun devBuildVersion(): String = try {
 }
 
 allprojects {
-    group = "io.maxxga.rowrelay"
+    // HEL-189: Maven-Central-verified namespace (owner-verified 2026-08-02).
+    // Java package names stay io.maxxga.rowrelay — groupId and code packages
+    // are independent, and a source-wide rename would churn every consumer.
+    group = "com.pkgrove"
     version = if (project.hasProperty("dev")) devBuildVersion() else rowrelayRelease
 
     repositories {

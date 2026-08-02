@@ -9,6 +9,31 @@ MINOR = backward-compatible downstream enhancement, PATCH = backward-compatible
 fix; `0.x` is not a blanket exception for breaking changes. Development builds
 carry commit identity (`-Pdev` → `<release>-dev.<sha>`) and are never published.
 
+## 0.3.0 (unreleased)
+
+**Coordinate migration (HEL-189):** the Maven `groupId` moves from
+`io.maxxga.rowrelay` to **`com.pkgrove`** — the namespace verified on Maven
+Central — so 0.3.0 is `com.pkgrove:rowrelay-*` on every target (GitLab, GitHub
+Packages, and eventually Central). Migration: change only the `groupId` in your
+dependency; artifact ids, Java package names (`io.maxxga.rowrelay.*`), and APIs
+are unchanged. `io.maxxga.rowrelay:*:0.2.0` stays available (immutable) in the
+GitLab/GitHub registries.
+
+- HEL-160: first-class JDBI transfer facade (`JdbiTransfer`) — transfers into a
+  JDBI `Handle` with `JdbiBatchWriter` transaction semantics; PerChunk inside a
+  caller-owned transaction is rejected before the target table is established.
+- HEL-168: Oracle↔DuckDB type-fidelity matrix + two data-loss fixes — DuckDB
+  targets no longer degrade precision-less integer sources (BIGINT etc.) to
+  DOUBLE, and `LocalTime` binds losslessly (ISO string) instead of via
+  second-precision timezone-shifted `java.sql.Time`. Rich unsupported-type
+  errors (column, kind, source type, adapter path); published type matrix in
+  `docs/reference/type-matrix.md`.
+- HEL-159: DuckDB dialect branch-matrix tests; key-only upsert now degrades to
+  `ON CONFLICT DO NOTHING` (was invalid empty `DO UPDATE SET`), matching Postgres.
+- HEL-129: live lifecycle/stress matrix; cancellation propagates
+  `OperationCancelledException` unwrapped with an honest partial report, and
+  `Relay.execute` accepts a cancel token.
+
 ## 0.2.0
 
 First **immutable release** (the earlier `0.1.x-SNAPSHOT` coordinates were

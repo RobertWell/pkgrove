@@ -340,10 +340,14 @@ class OracleTransferIT {
             assertEquals(java.time.OffsetDateTime.parse("2026-08-02T13:45:30.123456+02:00").toInstant(),
                 (it as java.time.OffsetDateTime).toInstant())
         },
+        // >4000 chars must be assembled in CLOB context — a bare RPAD(...,8000)
+        // is VARCHAR2-bound (4000) and throws in SQL. TO_CLOB first, then concat.
         MCase("clob large with newlines", "CLOB",
-              "'line1' || CHR(10) || RPAD('x', 8000, 'x')") {
+              "TO_CLOB('line1' || CHR(10)) || RPAD('x', 4000, 'x') || RPAD('y', 4000, 'y')") {
             val s = it as String
-            assertTrue(s.startsWith("line1\n")); assertEquals(6 + 8000, s.length)
+            assertTrue(s.startsWith("line1\n"))
+            assertEquals(6 + 8000, s.length)              // full payload, not truncated
+            assertEquals('x', s[6]); assertEquals('y', s[s.length - 1])
         },
         MCase("blob bytes", "BLOB", "HEXTORAW('DEADBEEF')") {
             assertArrayEquals(byteArrayOf(0xDE.toByte(), 0xAD.toByte(), 0xBE.toByte(), 0xEF.toByte()),

@@ -27,8 +27,10 @@ repositories {
     maven("https://maven.pkg.github.com/RobertWell/rowrelay")
 }
 dependencies {
-    implementation("io.maxxga.rowrelay:rowrelay-transfer:0.2.0")
-    implementation("io.maxxga.rowrelay:rowrelay-duckdb:0.2.0")   // your adapters
+    // ≥0.3.0 publishes under the Maven-Central-verified namespace com.pkgrove;
+    // 0.2.0 and earlier remain at io.maxxga.rowrelay in the same registries.
+    implementation("com.pkgrove:rowrelay-transfer:0.3.0")
+    implementation("com.pkgrove:rowrelay-duckdb:0.3.0")   // your adapters
 }
 ```
 
@@ -36,11 +38,14 @@ Maven:
 
 ```xml
 <dependency>
-    <groupId>io.maxxga.rowrelay</groupId>
+    <groupId>com.pkgrove</groupId>
     <artifactId>rowrelay-transfer</artifactId>
-    <version>0.2.0</version>
+    <version>0.3.0</version>
 </dependency>
 ```
+
+Java package names are unchanged (`io.maxxga.rowrelay.*`) — only the Maven
+coordinates moved.
 
 ## Your first workflow
 

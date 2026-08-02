@@ -7,7 +7,7 @@ RowRelay publishes to three targets, all from the immutable-release version
 |---|---|---|---|
 | **LAN GitLab** Maven registry (`root/rowrelay`) | LAN only | none (anonymous) | **live** (`.gitlab-ci.yml`) |
 | **GitHub Packages** (`maven.pkg.github.com/RobertWell/rowrelay`) | public repo | token (`read:packages`) even for public | **live** (`publish.yml`) |
-| **Maven Central** | fully public | **none** (the goal) | **scaffolded, pending 2 owner decisions + secrets** |
+| **Maven Central** | fully public | **none** (the goal) | **namespace + token READY; pending PGP signing key only** |
 
 ## Maven Central — the public, tokenless goal
 
@@ -15,15 +15,15 @@ Consumers resolve with a plain `mavenCentral()` and no credentials. Getting
 there needs the following. The build is already wired (gated on env, so nothing
 below breaks the existing targets); what remains is owner input + secrets.
 
-### Prerequisite 1 — Namespace (OWNER DECISION)
-Central verifies the groupId's namespace. RowRelay is `io.maxxga.rowrelay`.
-Two ways to own `io.maxxga` on central.sonatype.com:
-- **(a) Own the `maxxga.io` domain** and verify via a DNS TXT record. Keeps the
-  current coordinates unchanged.
-- **(b) Switch the group to `io.github.robertwell`** — free, verified by a
-  Central-provided GitHub repo, no domain needed. **BREAKING**: changes every
-  artifact coordinate, so the one current consumer (AuditPatchX) updates its
-  `groupId`. Cheapest if `maxxga.io` isn't owned.
+### Prerequisite 1 — Namespace — DECIDED: **`com.pkgrove`** ✅ (owner-verified 2026-08-02)
+The namespace `com.pkgrove` is verified on central.sonatype.com. The build's
+`group` is now `com.pkgrove`; **0.3.0 is the first release under the new
+coordinates** (`com.pkgrove:rowrelay-*`). The already-published
+`io.maxxga.rowrelay:*:0.2.0` artifacts remain immutable in the GitLab/GitHub
+registries — existing consumers (AuditPatchX) keep building and switch
+`groupId` on their next upgrade. Java package names stay `io.maxxga.rowrelay`
+(groupId and code packages are independent; a source-wide rename would churn
+every consumer for zero functional gain).
 
 ### Prerequisite 2 — License — DECIDED: **MIT** ✅
 Owner chose **MIT** (2026-08). `LICENSE` now holds the full MIT text
@@ -40,11 +40,14 @@ The Gradle-core `signing` plugin (no new dependency → passes the supply-chain
 gate) signs `publishToMavenCentral` when `SIGNING_KEY` is present, and is inert
 otherwise.
 
-### Prerequisite 4 — Central Portal token (secret)
-A Central Portal user token:
-- `MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`
-- `MAVEN_CENTRAL_URL` — the OSSRH-compatible staging endpoint for the verified
-  namespace.
+### Prerequisite 4 — Central Portal token — **IN HAND** ✅ (2026-08-02)
+The Central Portal user token is stored on the LAN box at
+`~/.config/rowrelay/central.env` (chmod 600; sets `MAVEN_CENTRAL_URL`,
+`MAVEN_CENTRAL_USERNAME`, `MAVEN_CENTRAL_PASSWORD`). Consume by **sourcing the
+file** — never inline the values. Validity + namespace authorization proven:
+the Portal `published` API answered `200` with the token and `401` without.
+The prod-side drop file it arrived in has been deleted. For CI publishing,
+mirror these three values as masked CI variables when the release is cut.
 
 ### Release flow (once the above are in place)
 1. Bump to the next immutable version (build.gradle.kts + CHANGELOG); no `-SNAPSHOT`.
