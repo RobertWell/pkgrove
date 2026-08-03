@@ -6,7 +6,7 @@ PkgroveKit publishes to three targets, all from the immutable-release version
 | Target | Reach | Auth to consume | Status |
 |---|---|---|---|
 | **LAN GitLab** Maven registry (`root/pkgrovekit`) | LAN only | none (anonymous) | **live** (`.gitlab-ci.yml`) |
-| **GitHub Packages** (`maven.pkg.github.com/RobertWell/pkgrovekit`) | public repo | token (`read:packages`) even for public | **live** (`publish.yml`) |
+| **GitHub Packages** (`maven.pkg.github.com/RobertWell/pkgrove`) | public repo | token (`read:packages`) even for public | **live** (`publish.yml`) |
 | **Maven Central** | fully public | **none** | **LIVE — 0.3.0 published 2026-08-02** |
 
 ## Maven Central — the public, tokenless goal

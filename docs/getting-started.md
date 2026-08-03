@@ -24,7 +24,7 @@ repositories {
     mavenCentral()
     // GitHub Packages requires a token with read:packages even for public
     // repositories — keep it in user-level settings, never in the repo:
-    maven("https://maven.pkg.github.com/RobertWell/pkgrovekit")
+    maven("https://maven.pkg.github.com/RobertWell/pkgrove")
 }
 dependencies {
     // ≥0.3.0 publishes under the Maven-Central-verified namespace com.pkgrove;

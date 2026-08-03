@@ -162,7 +162,7 @@ configure(subprojects.filter { it.name.startsWith("pkgrovekit-") }) {
                     name.set(project.name)
                     description.set("PkgroveKit — reusable Kotlin data library: " +
                                     "dynamic JDBC/JDBI data access and bidirectional batch transfer")
-                    url.set("https://github.com/RobertWell/pkgrovekit")
+                    url.set("https://github.com/RobertWell/pkgrove")
                     // HEL-189 Maven Central metadata. developers/scm/issueManagement
                     // complete. License decided by the owner: MIT (2026-08).
                     // Default emits MIT on every published artifact; overridable
@@ -185,9 +185,9 @@ configure(subprojects.filter { it.name.startsWith("pkgrovekit-") }) {
                         }
                     }
                     scm {
-                        connection.set("scm:git:https://github.com/RobertWell/pkgrovekit.git")
-                        developerConnection.set("scm:git:ssh://git@github.com/RobertWell/pkgrovekit.git")
-                        url.set("https://github.com/RobertWell/pkgrovekit")
+                        connection.set("scm:git:https://github.com/RobertWell/pkgrove.git")
+                        developerConnection.set("scm:git:ssh://git@github.com/RobertWell/pkgrove.git")
+                        url.set("https://github.com/RobertWell/pkgrove")
                     }
                     issueManagement {
                         system.set("Linear")
@@ -199,7 +199,7 @@ configure(subprojects.filter { it.name.startsWith("pkgrovekit-") }) {
         repositories {
             maven {
                 name = "GitHubPackages"
-                url = uri("https://maven.pkg.github.com/RobertWell/pkgrovekit")
+                url = uri("https://maven.pkg.github.com/RobertWell/pkgrove")
                 credentials {
                     username = System.getenv("GITHUB_ACTOR")
                     password = System.getenv("GITHUB_TOKEN")
