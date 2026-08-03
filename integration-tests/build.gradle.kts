@@ -24,3 +24,21 @@ dependencies {
     // prove pool return/eviction behavior.
     testImplementation(libs.hikaricp)
 }
+
+// HEL-170: coordination-layer proofs (2x XA-capable Postgres via Narayana).
+dependencies {
+    testImplementation(project(":pkgrovekit-coordination-api"))
+    testImplementation(project(":pkgrovekit-jta"))
+    testImplementation(project(":pkgrovekit-narayana"))
+    testImplementation(project(":pkgrovekit-saga"))
+    // PGXADataSource is referenced at compile time by CoordinationXaIT
+    testImplementation(libs.postgres.jdbc)
+}
+
+tasks.withType<Test>().configureEach {
+    // The docker-java shaded inside testcontainers defaults to Docker API v1.32,
+    // which modern daemons (min API 1.40) reject outright — every container
+    // start then fails with "Could not find a valid Docker environment". Pin a
+    // version every Docker >= 20.10 daemon accepts (same fix as HEL-175).
+    systemProperty("api.version", "1.41")
+}

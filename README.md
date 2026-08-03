@@ -90,6 +90,13 @@ handling the typed outcome                commit/rollback choreography, cleanup,
 
 ## Learn more
 
+- **Cross-database coordination (optional):** [docs/coordination.md](docs/coordination.md) —
+  when a transfer genuinely must be atomic across two XA-capable databases
+  (`pkgrovekit-coordination-api` + `pkgrovekit-jta` + `pkgrovekit-narayana`),
+  and when it must NOT (saga / staging-and-publish). Standard modules never
+  receive JTA/Narayana — CI enforces it (`assertCoordinationIsolation`).
+
+
 | | |
 |---|---|
 | [Getting started](docs/getting-started.md) | dependency setup, modules, first workflow |

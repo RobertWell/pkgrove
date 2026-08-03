@@ -84,6 +84,40 @@ subprojects {
     }
 }
 
+// HEL-170 proof #4: the coordination layer is OPT-IN — standard PkgroveKit
+// modules must never leak JTA/Narayana onto a consumer's classpath. This task
+// resolves each standard module's runtime classpath and fails the build if a
+// coordination-only artifact appears; wired into `check` so CI enforces it.
+val standardModules = listOf(
+    "pkgrovekit-core", "pkgrovekit-jdbc", "pkgrovekit-jdbi",
+    "pkgrovekit-oracle", "pkgrovekit-duckdb", "pkgrovekit-transfer", "pkgrovekit-postgres",
+)
+val forbiddenCoordinationGroups = listOf("jakarta.transaction", "org.jboss.narayana")
+
+val assertCoordinationIsolation = tasks.register("assertCoordinationIsolation") {
+    description = "Fails if a standard module's runtimeClasspath contains JTA/Narayana (HEL-170)"
+    doLast {
+        val leaks = standardModules.flatMap { name ->
+            val cfg = project(name).configurations.getByName("runtimeClasspath")
+            cfg.resolvedConfiguration.resolvedArtifacts
+                .filter { a -> forbiddenCoordinationGroups.any { g -> a.moduleVersion.id.group.startsWith(g) } }
+                .map { "$name -> ${it.moduleVersion.id}" }
+        }
+        if (leaks.isNotEmpty()) {
+            throw GradleException(
+                "Coordination dependencies leaked into standard modules (HEL-170 rule 3):\n" +
+                    leaks.joinToString("\n"),
+            )
+        }
+        logger.lifecycle("coordination isolation OK: no JTA/Narayana on ${standardModules.size} standard module classpaths")
+    }
+}
+
+// every `check` run (and therefore CI) enforces the isolation rule
+subprojects {
+    tasks.matching { it.name == "check" }.configureEach { dependsOn(assertCoordinationIsolation) }
+}
+
 /** Publishable-module convention: sources + Dokka-javadoc jars, maven-publish
  *  to GitHub Packages (credentials from the Actions environment only). */
 configure(subprojects.filter { it.name.startsWith("pkgrovekit-") }) {

@@ -3,6 +3,20 @@
 All notable changes to PkgroveKit. Pre-stable: breaking changes may occur in any
 0.x release and are listed here with migration notes.
 
+## Unreleased
+
+- HEL-170: optional cross-database transaction coordination. New modules
+  `pkgrovekit-coordination-api` (inert plans, capabilities, typed validation +
+  global outcomes incl. InDoubt/HeuristicMixed/RecoveryPending),
+  `pkgrovekit-jta` (interpretation through an external Jakarta TM; enlisted
+  connections are guard-proxied — local commit/rollback/close forbidden, one
+  connection per branch, thread-affine scopes), `pkgrovekit-narayana`
+  (standalone Narayana wiring + recovery scan), `pkgrovekit-saga`
+  (compensation interpreter with journal, explicitly non-ACID). Standard
+  modules stay JTA-free — enforced by `assertCoordinationIsolation` in `check`.
+  Proven by a two-resource XA commit/rollback/reject suite against real
+  Postgres (testcontainers) via Narayana. See docs/coordination.md.
+
 ## 0.4.0 — 2026-08-03
 
 **BREAKING — project renamed: RowRelay → PkgroveKit** (the "rowrelay" name is

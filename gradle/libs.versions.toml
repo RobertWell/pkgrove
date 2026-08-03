@@ -10,6 +10,11 @@ junit = "5.10.2"
 testcontainers = "1.21.4"
 postgres-driver = "42.7.13"
 coroutines = "1.8.1"
+# HEL-170: coordination layer — jakarta.transaction API + Narayana as the
+# established external transaction manager (never a custom 2PC).
+jakarta-transaction = "2.0.1"
+narayana = "7.0.2.Final"
+jboss-logging = "3.5.3.Final"
 
 [libraries]
 coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -24,6 +29,9 @@ testcontainers-junit = { module = "org.testcontainers:junit-jupiter", version.re
 testcontainers-postgres = { module = "org.testcontainers:postgresql", version.ref = "testcontainers" }
 postgres-jdbc = { module = "org.postgresql:postgresql", version.ref = "postgres-driver" }
 hikaricp = { module = "com.zaxxer:HikariCP", version.ref = "hikaricp" }
+jakarta-transaction-api = { module = "jakarta.transaction:jakarta.transaction-api", version.ref = "jakarta-transaction" }
+narayana-jta = { module = "org.jboss.narayana.jta:narayana-jta", version.ref = "narayana" }
+jboss-logging = { module = "org.jboss.logging:jboss-logging", version.ref = "jboss-logging" }
 
 [plugins]
 cyclonedx = { id = "org.cyclonedx.bom", version = "1.8.2" }

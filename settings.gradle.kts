@@ -14,5 +14,11 @@ include(
     "pkgrovekit-duckdb",
     "pkgrovekit-transfer",
     "pkgrovekit-postgres",
+    // HEL-170: optional coordination layer — NEVER a dependency of the modules
+    // above (enforced by the assertCoordinationIsolation task).
+    "pkgrovekit-coordination-api",
+    "pkgrovekit-jta",
+    "pkgrovekit-narayana",
+    "pkgrovekit-saga",
     "integration-tests",
 )
