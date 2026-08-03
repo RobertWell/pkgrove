@@ -44,6 +44,16 @@ object Transfer {
         val upsertKeys: List<String>? = null,
         /** (batchIndex, rowsWritten) — progress without row values (log-safe). */
         val onProgress: ((Int, Long) -> Unit)? = null,
+        /**
+         * HEL-161: use the target dialect's native bulk-ingest path (Postgres
+         * COPY / DuckDB Appender) when available. Falls back to batched INSERT
+         * with a [DataWarning] when the loader refuses the connection/schema,
+         * when [upsertKeys] are set (bulk paths cannot upsert), or when the
+         * write goes through a caller-supplied [TargetWriter] (e.g. the JDBI
+         * facade — its transaction contract must not be bypassed). The bulk
+         * path is all-or-nothing regardless of [commitPolicy].
+         */
+        val useBulkLoad: Boolean = false,
     )
 
     /**
@@ -69,7 +79,8 @@ object Transfer {
             target: Connection, targetDialect: SqlDialect, targetTable: String,
             options: Options = Options()): OperationReport =
         runNamed(source, sourceSql, namedParams, target, targetDialect, targetTable,
-                 options, TargetWriter { dml, b, o -> JdbcBatchWriter.write(target, dml, b, o) })
+                 options, TargetWriter { dml, b, o -> JdbcBatchWriter.write(target, dml, b, o) },
+                 bulkTarget = target)
 
     /**
      * HEL-160: run a transfer whose target write is performed by [writer], with
@@ -85,16 +96,17 @@ object Transfer {
                     ddlConnection: Connection, targetDialect: SqlDialect, targetTable: String,
                     options: Options = Options(), writer: TargetWriter): OperationReport =
         runNamed(source, sourceSql, namedParams, ddlConnection, targetDialect, targetTable,
-                 options, writer)
+                 options, writer, bulkTarget = null)
 
     private fun runNamed(source: Connection, sourceSql: String, namedParams: Map<String, Any?>,
                          ddlConnection: Connection, targetDialect: SqlDialect, targetTable: String,
-                         options: Options, writer: TargetWriter): OperationReport {
+                         options: Options, writer: TargetWriter,
+                         bulkTarget: Connection?): OperationReport {
         val named = com.pkgrove.pkgrovekit.jdbc.NamedSql.parse(sourceSql)
         val preWarnings = mutableListOf<DataWarning>()
         val values = named.bind(namedParams) { preWarnings += it }
         return runPositional(source, named.sql, values, ddlConnection, targetDialect,
-                             targetTable, options, preWarnings, writer)
+                             targetTable, options, preWarnings, writer, bulkTarget)
     }
 
     /**
@@ -110,12 +122,13 @@ object Transfer {
             options: Options = Options()): OperationReport =
         runPositional(source, sourceSql, sourceParams, target, targetDialect,
                       targetTable, options, emptyList(),
-                      TargetWriter { dml, b, o -> JdbcBatchWriter.write(target, dml, b, o) })
+                      TargetWriter { dml, b, o -> JdbcBatchWriter.write(target, dml, b, o) },
+                      bulkTarget = target)
 
     private fun runPositional(source: Connection, sourceSql: String, sourceParams: List<Any?>,
                               target: Connection, targetDialect: SqlDialect, targetTable: String,
                               options: Options, preWarnings: List<DataWarning>,
-                              writer: TargetWriter): OperationReport {
+                              writer: TargetWriter, bulkTarget: Connection? = null): OperationReport {
         val warnings = preWarnings.toMutableList()
         JdbcReader.open(
             source, sourceSql, sourceParams,
@@ -163,6 +176,34 @@ object Transfer {
                         targetDialect.bindValue(raw, effective[out])
                     })
                 })
+            }
+            // HEL-161: opt-in native bulk path — used only when every gate says
+            // yes; otherwise fall back to the batched writer with a visible warning.
+            if (options.useBulkLoad) {
+                val loader = targetDialect.bulkLoader()
+                val refusal: String? = when {
+                    bulkTarget == null ->
+                        "a caller-supplied TargetWriter owns the write path"
+                    options.upsertKeys != null ->
+                        "upsert keys are set (bulk paths cannot upsert)"
+                    loader == null ->
+                        "${targetDialect.name} has no bulk loader"
+                    else -> when (val s = loader.supports(bulkTarget, effective)) {
+                        is com.pkgrove.pkgrovekit.jdbc.BulkSupport.Yes -> null
+                        is com.pkgrove.pkgrovekit.jdbc.BulkSupport.No -> s.reason
+                    }
+                }
+                if (refusal == null) {
+                    val report = loader!!.bulkLoad(
+                        bulkTarget!!, targetTable, effective, outBatches,
+                        com.pkgrove.pkgrovekit.jdbc.BulkLoadOptions(
+                            cancelToken = options.cancelToken,
+                            onProgress = options.onProgress))
+                    return report.copy(warnings = warnings + stream.warnings + report.warnings)
+                }
+                warnings += DataWarning(
+                    code = "BULK_LOAD_UNAVAILABLE",
+                    message = "bulk load requested but unavailable ($refusal) — using batched INSERT")
             }
             val report = writer.write(
                 dml, outBatches,

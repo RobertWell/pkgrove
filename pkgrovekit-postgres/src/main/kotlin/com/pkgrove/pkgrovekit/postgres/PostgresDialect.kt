@@ -105,6 +105,9 @@ object PostgresDialect : SqlDialect {
                "ON CONFLICT ($keys) $conflict"
     }
 
+    /** HEL-161: native COPY fast path (opt-in via Transfer.Options.useBulkLoad). */
+    override fun bulkLoader(): com.pkgrove.pkgrovekit.jdbc.BulkLoader = PostgresCopyLoader
+
     override fun bindValue(value: Any?, column: Column): Any? {
         // HEL-127: reconstruct uuid/json/jsonb/array from the text the
         // PostgresValueReader carried, so a String round-trips into the exact

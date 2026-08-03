@@ -73,6 +73,35 @@ Values land by **name**, never by SELECT order. The resolved plan is
 inspectable: `mapping.resolve(schema)` returns a `MappingPlan` you can assert
 on.
 
+## Native bulk load (HEL-161)
+
+Engines with a native ingest protocol can skip prepared-statement binding
+entirely — Postgres COPY (`PostgresCopyLoader`) and the DuckDB Appender
+(`DuckDbAppenderLoader`). Opt in per transfer:
+
+```kotlin
+val report = Transfer.run(
+    source, "SELECT * FROM trades", emptyList(),
+    pgConnection, PostgresDialect, "trades_copy",
+    Transfer.Options(useBulkLoad = true))
+```
+
+or per Relay sink:
+
+```kotlin
+to(Analytics, "trades_copy") { bulkLoad() }
+```
+
+Same data contract as the batched path (values are bind-adapted by the same
+dialect hook), all-or-nothing regardless of `commitPolicy`, and honest
+fallback: when the fast path can't serve the request — upsert keys set, a
+caller-supplied `TargetWriter` owns the write, a non-native connection, or a
+BINARY column a text protocol can't carry — the transfer silently degrades to
+batched INSERT and records a `BULK_LOAD_UNAVAILABLE` warning in the report.
+A mid-stream failure rolls the whole load back and throws `BulkLoadException`
+with the partial report attached. Benchmarked in
+`integration-tests/.../BulkLoadIT.kt` (100k rows against live engines).
+
 ## Caller-owned transactions, savepoints, checkpoints
 
 See [TRANSACTIONS.md](../TRANSACTIONS.md) — `TransactionPolicy`

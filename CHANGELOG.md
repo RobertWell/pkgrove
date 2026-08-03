@@ -5,6 +5,19 @@ All notable changes to PkgroveKit. Pre-stable: breaking changes may occur in any
 
 ## Unreleased
 
+- HEL-161: opt-in native bulk-load fast path for transfers. New
+  `BulkLoader` capability on `SqlDialect` with two implementations:
+  `PostgresCopyLoader` (COPY FROM STDIN CSV via pgjdbc CopyManager) and
+  `DuckDbAppenderLoader` (native Appender API). Enable per transfer with
+  `Transfer.Options(useBulkLoad = true)` or per sink with the Relay DSL
+  `bulkLoad()` flag. Contract parity with the batched path: values are
+  bind-adapted identically, the load is all-or-nothing (failure rolls back
+  everything and throws `BulkLoadException` with an honest report), and the
+  caller's autoCommit is restored. Refusals never fail the transfer — upsert
+  keys, caller-supplied TargetWriters, non-native connections, and BINARY
+  columns (text protocols can't carry them) fall back to batched INSERT with
+  a `BULK_LOAD_UNAVAILABLE` warning. Benchmarked in `BulkLoadIT` (100k rows,
+  live engines) with identical row/checksum outcomes to the batched path.
 - HEL-172: optional framework adapters. `pkgrovekit-quarkus` (CDI producer over
   Agroal-managed datasources; explicit MP-Config datasource-to-dialect mapping,
   no classpath scanning; BlockingBoundary event-loop guard; JTA delegates to

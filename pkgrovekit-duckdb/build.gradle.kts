@@ -10,6 +10,9 @@ plugins {
 
 dependencies {
     api(project(":pkgrovekit-jdbc"))
+    // HEL-161: the Appender loader compiles against driver classes
+    // (DuckDBConnection/DuckDBAppender); still consumer-provided at runtime.
+    compileOnly(libs.duckdb.jdbc)
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.launcher)
     testRuntimeOnly(libs.duckdb.jdbc)

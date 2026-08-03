@@ -99,6 +99,15 @@ interface SqlDialect {
     fun upsertSql(table: String, schema: Schema, keyColumns: List<String>): String? = null
 
     /**
+     * HEL-161: the dialect's native bulk-ingest fast path, or null when the
+     * engine has none. OPT-IN only — the transfer pipeline uses it solely when
+     * the caller asks (Transfer.Options.useBulkLoad / Relay `bulkLoad()`), and
+     * falls back to batched INSERT with a warning when [BulkLoader.supports]
+     * says no. Plain inserts only (no upsert semantics on this path).
+     */
+    fun bulkLoader(): BulkLoader? = null
+
+    /**
      * Apply [policy] to columns this dialect cannot represent. Returns the
      * effective schema plus warnings; REJECT throws naming the first bad
      * column. STRINGIFY re-types to a text column; SKIP drops the column.

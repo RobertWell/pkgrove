@@ -91,6 +91,7 @@ class Relay private constructor(
         internal var upsertKeys: List<String>? = null
         internal var commitPolicy: JdbcBatchWriter.CommitPolicy = JdbcBatchWriter.CommitPolicy.AllOrNothing
         internal var mode: SqlDialect.TargetMode? = null
+        internal var useBulkLoad: Boolean = false
 
         /** Rename a source column into the target by NAME (never by position). */
         fun rename(source: String, target: String) { renames += source to target }
@@ -116,6 +117,12 @@ class Relay private constructor(
         /** How the target table is established (CREATE by default; APPEND when
          *  [upsertBy] is used). */
         fun mode(mode: SqlDialect.TargetMode) { this.mode = mode }
+
+        /** HEL-161: use the sink dialect's native bulk-ingest path (Postgres
+         *  COPY / DuckDB Appender) when available — falls back to batched
+         *  INSERT with a warning otherwise. All-or-nothing; incompatible with
+         *  [upsertBy] (the request falls back, it never fails). */
+        fun bulkLoad() { useBulkLoad = true }
     }
 
     /** Raised when a plan DEFINITION is structurally incomplete — at definition
@@ -179,6 +186,7 @@ class Relay private constructor(
                 commitPolicy = spec.commitPolicy,
                 mapping = mapping,
                 upsertKeys = spec.upsertKeys,
+                useBulkLoad = spec.useBulkLoad,
             )
             var flow = src.toFlow()
             transform?.let { flow = flow.transform(it) }
