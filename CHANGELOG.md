@@ -1,7 +1,25 @@
 # Changelog
 
-All notable changes to RowRelay. Pre-stable: breaking changes may occur in any
+All notable changes to PkgroveKit. Pre-stable: breaking changes may occur in any
 0.x release and are listed here with migration notes.
+
+## 0.4.0 — 2026-08-03
+
+**BREAKING — project renamed: RowRelay → PkgroveKit** (the "rowrelay" name is
+registered by another party). The verified Maven namespace is unchanged.
+
+- Maven coordinates: `com.pkgrove:rowrelay-<module>` → `com.pkgrove:pkgrovekit-<module>`.
+- Java packages: `io.maxxga.rowrelay.*` → `com.pkgrove.pkgrovekit.*` (now aligned
+  with the verified namespace). Class names are unchanged — migration is a
+  dependency-coordinate bump plus a mechanical import rewrite:
+  `s/io\.maxxga\.rowrelay/com.pkgrove.pkgrovekit/`.
+- The old `rowrelay-*` artifacts up to 0.3.0 remain on Maven Central (immutable)
+  but are DEPRECATED and will receive no further releases.
+- Also in this release (post-0.3.0 mainline): HEL-128 fail-visible cleanup +
+  pool-invalidation contract + coroutine-to-JDBC cancellation bridge
+  (`CancelToken.linked`, `Databases.CleanupException`, `invalidator` hooks);
+  HEL-129 real-pool (HikariCP) lifecycle integration matrix; HEL-168/160/159
+  DuckDB type-matrix and JDBI transfer facade improvements.
 
 **Release-version policy:** published coordinates are **immutable releases** —
 never a mutable `-SNAPSHOT`. MAJOR = breaking API / major workflow redesign,
@@ -12,11 +30,11 @@ carry commit identity (`-Pdev` → `<release>-dev.<sha>`) and are never publishe
 ## 0.3.0 (2026-08-02)
 
 **Coordinate migration (HEL-189):** the Maven `groupId` moves from
-`io.maxxga.rowrelay` to **`com.pkgrove`** — the namespace verified on Maven
-Central — so 0.3.0 is `com.pkgrove:rowrelay-*` on every target (GitLab, GitHub
+`com.pkgrove.pkgrovekit` to **`com.pkgrove`** — the namespace verified on Maven
+Central — so 0.3.0 is `com.pkgrove:pkgrovekit-*` on every target (GitLab, GitHub
 Packages, and eventually Central). Migration: change only the `groupId` in your
-dependency; artifact ids, Java package names (`io.maxxga.rowrelay.*`), and APIs
-are unchanged. `io.maxxga.rowrelay:*:0.2.0` stays available (immutable) in the
+dependency; artifact ids, Java package names (`com.pkgrove.pkgrovekit.*`), and APIs
+are unchanged. `com.pkgrove.pkgrovekit:*:0.2.0` stays available (immutable) in the
 GitLab/GitHub registries.
 
 - HEL-160: first-class JDBI transfer facade (`JdbiTransfer`) — transfers into a
@@ -65,13 +83,13 @@ backward-compatible for existing `JdbcReader`/`JdbiReader`/`Transfer` consumers
 
 HEL-127 PostgreSQL adapter + migration boundary:
 
-- `rowrelay-postgres`: PostgresDialect (lowercase-fold identifier policy —
+- `pkgrovekit-postgres`: PostgresDialect (lowercase-fold identifier policy —
   the mirror of Oracle's; TEXT/BYTEA/NUMERIC/TIMESTAMPTZ type table; native
   ON CONFLICT upsert; savepoints supported; driver compileOnly). Live
   testcontainers suite: Postgres↔DuckDB both directions, named params,
   rename mapping, upsert, savepoint-per-batch. docs/MIGRATION.md defines
   the data-movement vs schema-evolution boundary (Flyway/Liquibase own
-  schema history; RowRelay owns bulk movement + verification).
+  schema history; PkgroveKit owns bulk movement + verification).
 
 
 HEL-125 functional workflow API:
@@ -89,7 +107,7 @@ HEL-125 functional workflow API:
 HEL-128 resource ownership & lifecycle core:
 
 - `DatabaseKey` typed identities + `Databases` registry: application-owned
-  pools (borrow/return, never close the pool) vs RowRelay-managed
+  pools (borrow/return, never close the pool) vs PkgroveKit-managed
   (AutoCloseable, reverse-order, idempotent close); duplicate registrations
   fail at build time. Per-key connection budgets (fair), acquisition
   timeout with bounded actionable failure, cancellation-aware waiting,
@@ -114,11 +132,11 @@ HEL-126 selectable transaction policies:
 
 HEL-119 named transfer (added after the initial bootstrap):
 
-- `NamedSql` (rowrelay-jdbc): `:user_name` parameters for the direct JDBC
+- `NamedSql` (pkgrovekit-jdbc): `:user_name` parameters for the direct JDBC
   path — state-aware parsing (literals/quoted identifiers/comments/`::`),
   repeated names, exact missing-name rejection, unused-parameter policies;
   positional binding remains as the low-level compatibility form.
-- `Mapping` / `MappingPlan` (rowrelay-transfer): named source-to-target
+- `Mapping` / `MappingPlan` (pkgrovekit-transfer): named source-to-target
   mapping with renames, constants, omissions; case-insensitive, validated
   before writing, order-independent, inspectable plan.
 - Explicit named-key upsert: `Transfer.Options.upsertKeys` → Oracle `MERGE` /
@@ -141,24 +159,24 @@ Initial capability set, extracted from production code in AuditPatchX and
 QuerySkiff (see the HEL-120 pilot — behavior parity proven by the consumer's
 own integration suite, 135/135):
 
-- `rowrelay-core`: dynamic `Schema`/`Row`/`RowBatch` model, `DataWarning`
+- `pkgrovekit-core`: dynamic `Schema`/`Row`/`RowBatch` model, `DataWarning`
   (nothing lossy is silent), `ConversionPolicy` (REJECT default),
   `CancelToken`, no-echo safe-identifier gate, `OperationReport` with
   failed-batch/row-range identification.
-- `rowrelay-jdbc`: streaming parameterized reads with bounded memory,
+- `pkgrovekit-jdbc`: streaming parameterized reads with bounded memory,
   schema discovery without DTOs, `ValueReader` normalization seam,
   batch writer with AllOrNothing / PerChunk commit policies,
   `SqlDialect` contract.
-- `rowrelay-jdbi`: first-class JDBI entry point; equivalence with the JDBC
+- `pkgrovekit-jdbi`: first-class JDBI entry point; equivalence with the JDBC
   path by construction; caller-owned-transaction semantics (never commits
   inside your transaction; rejects PerChunk there).
-- `rowrelay-oracle`: Oracle dialect (NUMBER p/s, VARCHAR2→CLOB overflow,
+- `pkgrovekit-oracle`: Oracle dialect (NUMBER p/s, VARCHAR2→CLOB overflow,
   NUMBER(1) boolean, RAW/BLOB by size, TZ-aware temporals) +
   `OracleValueReader` normalizing `oracle.sql.*`.
-- `rowrelay-duckdb`: DuckDB dialect incl. java.time→java.sql bind adaptation.
-- `rowrelay-transfer`: bidirectional SQL-in/data-out engine with target
+- `pkgrovekit-duckdb`: DuckDB dialect incl. java.time→java.sql bind adaptation.
+- `pkgrovekit-transfer`: bidirectional SQL-in/data-out engine with target
   modes, conversion policies, bounded memory, honest partial reports.
 
 Renamed from the internal working name `datakit`
 (`internal.datakit:*` coordinates are dead; migrate imports
-`datakit.*` → `io.maxxga.rowrelay.*`).
+`datakit.*` → `com.pkgrove.pkgrovekit.*`).

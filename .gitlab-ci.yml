@@ -1,4 +1,4 @@
-# RowRelay — GitLab CI (LAN mirror `root/rowrelay`; main-of-record is GitHub).
+# PkgroveKit — GitLab CI (LAN mirror `root/pkgrovekit`; main-of-record is GitHub).
 #
 # HEL-124 (owner directive): verification-metadata.xml is generated INSIDE
 # GitLab CI, never locally. This job:
@@ -30,7 +30,7 @@ verification-metadata:
     GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle-home"
     GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx1g"
   cache:
-    key: rowrelay-gradle
+    key: pkgrovekit-gradle
     paths:
       - .gradle-home/caches
       - .gradle-home/wrapper
@@ -52,7 +52,7 @@ verification-metadata:
     expire_in: 90 days
 
 # HEL-123: publish the immutable release to THIS project's Maven package
-# registry, so LAN CI consumers (AuditPatchX) resolve RowRelay as a normal
+# registry, so LAN CI consumers (AuditPatchX) resolve PkgroveKit as a normal
 # registry dependency — PAT-free (public project => anonymous reads; the
 # publish authenticates with the ephemeral job token). Gated on the verify
 # stage, which runs the full test build under ENFORCED dependency verification.
@@ -72,20 +72,20 @@ publish-registry:
     # CI_API_V4_URL is the EDGE hostname (gitlab.local.test), which in-cluster
     # job pods cannot resolve — publish via the cluster service DNS instead
     # (same accepted plain-http in-cluster hop as the datakit deploy).
-    ROWRELAY_GITLAB_MAVEN_URL: "http://gitlab.gitlab.svc.cluster.local/api/v4/projects/$CI_PROJECT_ID/packages/maven"
+    PKGROVEKIT_GITLAB_MAVEN_URL: "http://gitlab.gitlab.svc.cluster.local/api/v4/projects/$CI_PROJECT_ID/packages/maven"
   cache:
-    key: rowrelay-gradle
+    key: pkgrovekit-gradle
     paths:
       - .gradle-home/caches
       - .gradle-home/wrapper
   script:
     # immutability guard: never re-publish an existing version
     - |
-      VERSION=$(./gradlew --no-daemon -q :rowrelay-core:properties --property version | awk '/^version:/ {print $2}')
+      VERSION=$(./gradlew --no-daemon -q :pkgrovekit-core:properties --property version | awk '/^version:/ {print $2}')
       echo "resolved version: $VERSION"
       case "$VERSION" in *-SNAPSHOT|*-dev*) echo "refusing to publish mutable version"; exit 1;; esac
       CODE=$(curl -s -o /dev/null -w '%{http_code}' \
-        "$ROWRELAY_GITLAB_MAVEN_URL/io/maxxga/rowrelay/rowrelay-core/$VERSION/rowrelay-core-$VERSION.pom")
+        "$PKGROVEKIT_GITLAB_MAVEN_URL/com/pkgrove/pkgrovekit/pkgrovekit-core/$VERSION/pkgrovekit-core-$VERSION.pom")
       if [ "$CODE" = "200" ]; then
         echo "version $VERSION already in the registry — immutable, skipping publish (bump the version to ship new content)"
         exit 0

@@ -1,6 +1,6 @@
-# RowRelay
+# PkgroveKit
 
-**Move rows between databases with intent-describing application code — RowRelay
+**Move rows between databases with intent-describing application code — PkgroveKit
 owns the connections, statements, batching, transactions, and honest outcomes.**
 
 - **Status:** pre-stable (`0.2.0`). APIs may change before `1.0.0`; every
@@ -8,7 +8,7 @@ owns the connections, statements, batching, transactions, and honest outcomes.**
 - **Requirements:** Java 21+, Kotlin 1.9+ (consumers may be pure Java).
 - **Framework-neutral:** no Quarkus/Spring/JPA/REST dependencies in any artifact.
 
-## The RowRelay coding style
+## The PkgroveKit coding style
 
 1. **Infrastructure is configured once** — identities, pools, dialects, and
    budgets at startup; never in workflow code.
@@ -65,7 +65,7 @@ Relay.build {
 ## Who owns what
 
 ```text
-your application                          RowRelay
+your application                          PkgroveKit
 ────────────────────────────────────────  ─────────────────────────────────────
 database identities + pools (startup)     connection leasing + budgets + release
 SQL and named parameters                  statement preparation + binding

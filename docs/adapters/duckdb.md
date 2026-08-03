@@ -1,4 +1,4 @@
-# DuckDB adapter (`rowrelay-duckdb`)
+# DuckDB adapter (`pkgrovekit-duckdb`)
 
 - **Type mapping**: standard DuckDB DDL types from the common model.
 - **Bind adaptation**: `java.time` → `java.sql` where the JDBC driver requires

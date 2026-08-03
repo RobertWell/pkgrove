@@ -1,6 +1,6 @@
-# RowRelay transaction policies (HEL-126)
+# PkgroveKit transaction policies (HEL-126)
 
-> RowRelay never hides commit, rollback, partial completion, or retry
+> PkgroveKit never hides commit, rollback, partial completion, or retry
 > semantics. Every policy states who commits, what a failure destroys, and
 > whether a retry can duplicate effects.
 
@@ -26,7 +26,7 @@ cannot be established, the operation fails before processing rows.
 ## Read-only sources
 
 Reads run on the caller's source connection; set it read-only /
-snapshot-isolated per the source database's own capabilities. RowRelay does
+snapshot-isolated per the source database's own capabilities. PkgroveKit does
 not promise a universal cross-database snapshot model — DuckDB reads are
 snapshot-isolated per its MVCC; Oracle statement-level consistency applies
 per its versioning. Source and target lifecycles are always separate.
@@ -38,12 +38,12 @@ An Oracle ↔ DuckDB transfer uses TWO independent transaction resources:
 ```
 source snapshot/read transaction
             ↓
-RowRelay bounded batches
+PkgroveKit bounded batches
             ↓
 target atomic or chunked write transactions
 ```
 
-RowRelay never claims the pair is one distributed transaction. The outcome
+PkgroveKit never claims the pair is one distributed transaction. The outcome
 model keeps the sides distinct: rows read (stream metrics) vs rows committed
 on the target (`TransactionOutcome`). A source that keeps moving between a
 failure and a retry is the CALLER's consistency decision. XA/distributed

@@ -5,8 +5,8 @@ analysis, explicit-API, and API-compatibility gates, with adopt/defer decisions.
 
 ## Context
 
-HEL-125 asks RowRelay to "add or explicitly evaluate formatting, static-analysis,
-explicit-API, and API-compatibility gates." RowRelay is **pre-stable
+HEL-125 asks PkgroveKit to "add or explicitly evaluate formatting, static-analysis,
+explicit-API, and API-compatibility gates." PkgroveKit is **pre-stable
 (`0.1.x`)** and its public API is still moving (the workflow algebra, structured
 executor, and `Metrics` all changed within this cycle). The gate that's right
 for a stabilising 1.0 library is not always right for a 0.1.x one that is still

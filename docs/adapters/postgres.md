@@ -1,4 +1,4 @@
-# PostgreSQL adapter (`rowrelay-postgres`)
+# PostgreSQL adapter (`pkgrovekit-postgres`)
 
 - **Identifier policy**: lowercase-then-quote — the mirror of Oracle's rule;
   generated SQL matches objects created without quotes (Postgres folds down).
@@ -17,5 +17,5 @@
 - **Live proof**: `integration-tests/.../PostgresTransferIT.kt`
   (testcontainers `postgres:16-alpine`): both directions, named params,
   rename mapping, upsert, savepoint-per-batch, exotic-type round-trip.
-- **Migration boundary**: RowRelay owns bulk data movement; schema evolution
+- **Migration boundary**: PkgroveKit owns bulk data movement; schema evolution
   belongs to Flyway/Liquibase — see [MIGRATION.md](../MIGRATION.md).

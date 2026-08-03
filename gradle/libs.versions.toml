@@ -1,4 +1,4 @@
-# RowRelay version catalog — single source of dependency truth.
+# PkgroveKit version catalog — single source of dependency truth.
 [versions]
 kotlin = "1.9.23"
 dokka = "1.9.20"

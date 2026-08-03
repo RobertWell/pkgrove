@@ -4,13 +4,13 @@
 
 | Artifact | Adds | Transitive deps |
 |---|---|---|
-| `rowrelay-core` | Schema/Row/RowBatch model, warnings, policies, cancellation, safe identifiers, `Choice`, `WorkflowOutcome` | Kotlin stdlib only |
-| `rowrelay-jdbc` | streaming reads, batch writer, transaction policies, `SqlDialect` contract, `Databases` registry | core (no JDBI, no drivers) |
-| `rowrelay-jdbi` | the same operations through a JDBI `Handle` | jdbc + `jdbi3-core` |
-| `rowrelay-oracle` | Oracle dialect + `oracle.sql.*` normalization | jdbc (driver is yours, `compileOnly`) |
-| `rowrelay-duckdb` | DuckDB dialect | jdbc (driver is yours) |
-| `rowrelay-postgres` | PostgreSQL dialect (+ uuid/json/jsonb/array) | jdbc (driver is yours) |
-| `rowrelay-transfer` | `Relay` golden path, transfer engine, workflow executors | jdbc (+ kotlinx-coroutines) |
+| `pkgrovekit-core` | Schema/Row/RowBatch model, warnings, policies, cancellation, safe identifiers, `Choice`, `WorkflowOutcome` | Kotlin stdlib only |
+| `pkgrovekit-jdbc` | streaming reads, batch writer, transaction policies, `SqlDialect` contract, `Databases` registry | core (no JDBI, no drivers) |
+| `pkgrovekit-jdbi` | the same operations through a JDBI `Handle` | jdbc + `jdbi3-core` |
+| `pkgrovekit-oracle` | Oracle dialect + `oracle.sql.*` normalization | jdbc (driver is yours, `compileOnly`) |
+| `pkgrovekit-duckdb` | DuckDB dialect | jdbc (driver is yours) |
+| `pkgrovekit-postgres` | PostgreSQL dialect (+ uuid/json/jsonb/array) | jdbc (driver is yours) |
+| `pkgrovekit-transfer` | `Relay` golden path, transfer engine, workflow executors | jdbc (+ kotlinx-coroutines) |
 
 JDBC-only consumers never receive JDBI transitively. Database drivers stay
 consumer-controlled.
@@ -24,13 +24,13 @@ repositories {
     mavenCentral()
     // GitHub Packages requires a token with read:packages even for public
     // repositories — keep it in user-level settings, never in the repo:
-    maven("https://maven.pkg.github.com/RobertWell/rowrelay")
+    maven("https://maven.pkg.github.com/RobertWell/pkgrovekit")
 }
 dependencies {
     // ≥0.3.0 publishes under the Maven-Central-verified namespace com.pkgrove;
-    // 0.2.0 and earlier remain at io.maxxga.rowrelay in the same registries.
-    implementation("com.pkgrove:rowrelay-transfer:0.3.0")
-    implementation("com.pkgrove:rowrelay-duckdb:0.3.0")   // your adapters
+    // 0.2.0 and earlier remain at com.pkgrove.pkgrovekit in the same registries.
+    implementation("com.pkgrove:pkgrovekit-transfer:0.3.0")
+    implementation("com.pkgrove:pkgrovekit-duckdb:0.3.0")   // your adapters
 }
 ```
 
@@ -39,12 +39,12 @@ Maven:
 ```xml
 <dependency>
     <groupId>com.pkgrove</groupId>
-    <artifactId>rowrelay-transfer</artifactId>
+    <artifactId>pkgrovekit-transfer</artifactId>
     <version>0.3.0</version>
 </dependency>
 ```
 
-Java package names are unchanged (`io.maxxga.rowrelay.*`) — only the Maven
+Java package names are unchanged (`com.pkgrove.pkgrovekit.*`) — only the Maven
 coordinates moved.
 
 ## Your first workflow
@@ -65,13 +65,13 @@ val relay = Relay.build {
 }
 ```
 
-RowRelay *borrows* connections from your pools and never closes the pools;
+PkgroveKit *borrows* connections from your pools and never closes the pools;
 close the `Relay` (it is `AutoCloseable`) at shutdown.
 
 3. **Define an immutable plan, execute, handle the typed outcome** — see the
    [homepage golden path](../README.md#the-golden-path). Every homepage snippet
    is a real CI-compiled test in
-   `integration-tests/src/test/kotlin/io/maxxga/rowrelay/it/QuickStartExamples.kt`.
+   `integration-tests/src/test/kotlin/com/pkgrove/pkgrovekit/it/QuickStartExamples.kt`.
 
 ## Java consumers
 
@@ -97,7 +97,7 @@ Java services typically use `Transfer.run` + `Mapping.build` directly
 |---|---|
 | Java | 21+ |
 | Kotlin | 1.9+ |
-| JDBI | 3.4x (`rowrelay-jdbi`) |
+| JDBI | 3.4x (`pkgrovekit-jdbi`) |
 | Oracle | tested against `gvenzl/oracle-free` 23 (live integration suite) |
 | PostgreSQL | tested against `postgres:16` (live integration suite) |
 | DuckDB | 1.1.x |

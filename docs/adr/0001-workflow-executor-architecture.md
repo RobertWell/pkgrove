@@ -4,13 +4,13 @@ Status: **Accepted** (HEL-167) · Supersedes the "no River implementation" note 
 
 ## Context
 
-RowRelay owns an immutable, inspectable **workflow algebra** (business routing via
+PkgroveKit owns an immutable, inspectable **workflow algebra** (business routing via
 `Choice<L,R>`, pure `map`/`filter`, effectful write nodes, typed
 `WorkflowOutcome`). *How* a plan runs — scheduling, bounded parallelism,
 cancellation, resource budgets, transaction affinity — is the **executor's**
 job. The core rule:
 
-> RowRelay owns the workflow language. Execution backends execute it without
+> PkgroveKit owns the workflow language. Execution backends execute it without
 > leaking backend-specific types into application plans.
 
 Plans therefore contain **no** coroutine scope, thread pool, Temporal, Pekko, or
@@ -31,7 +31,7 @@ distinguishable and freely replayable.
 ## Decision
 
 **Default executor = Kotlin coroutines** (structured concurrency). Everything
-else is optional, isolated, and evaluated below. `rowrelay-core` and the neutral
+else is optional, isolated, and evaluated below. `pkgrovekit-core` and the neutral
 plan contracts take **zero** dependency on any executor.
 
 ## Options evaluated
@@ -48,13 +48,13 @@ executor module only (not core, not the JDBC/dialect modules).
 Arrow's `Either`/`Raise`/typed-error/resource conventions align with our
 `Choice`/`WorkflowOutcome`. **Do not** make Arrow mandatory in the smallest core
 module (dependency weight + Java-consumer ergonomics). Offer an optional
-`rowrelay-arrow` interop module if a consumer wants `Either` conversions; our
+`pkgrovekit-arrow` interop module if a consumer wants `Either` conversions; our
 `Choice` deliberately mirrors Left/Right so the mapping is trivial.
 
 ### Temporal — FUTURE durable seam only
 The right tool when a workflow must survive process/machine failure (durable
 timers, history replay). Database effects would run in Temporal *activities*;
-Temporal types must never touch RowRelay core contracts. **Do not build** a
+Temporal types must never touch PkgroveKit core contracts. **Do not build** a
 production Temporal backend here — only keep the `WorkflowExecutor` seam and the
 effect-node portability rules that would let an adapter slot in later. Adoption
 trigger: a real "must not lose in-flight ETL across a restart" requirement.
@@ -72,8 +72,8 @@ legitimate candidate for a *small* distributed executor, and lightweightness +
 operational simplicity are valid criteria — not to be dismissed solely because
 the project is in the Attic. **But** it is retired with a smaller maintenance
 community, so any River/JGDMS adapter must:
-- live in a separate optional module (`rowrelay-flow-river`);
-- add **no** transitive dependency to `rowrelay-core` or the default executor;
+- live in a separate optional module (`pkgrovekit-flow-river`);
+- add **no** transitive dependency to `pkgrovekit-core` or the default executor;
 - preserve the identical backend-neutral plan;
 - pass dependency, CVE, Java-version, and operational review;
 - **document a named owner** for maintenance, security patches, and releases;
@@ -84,13 +84,13 @@ Adoption trigger: a distributed need where River's lighter footprint measurably
 beats the maintained alternatives AND an owner accepts the retired-project risk.
 
 ### Flink / Hazelcast Jet — OUT of scope
-Large-scale stream/batch platforms, not default RowRelay dependencies. Revisit
-only if RowRelay's product scope deliberately expands into distributed
+Large-scale stream/batch platforms, not default PkgroveKit dependencies. Revisit
+only if PkgroveKit's product scope deliberately expands into distributed
 stream/batch processing.
 
 ## Consequences
 
-- `rowrelay-core` stays framework-neutral: `Choice`, `WorkflowOutcome`, plan
+- `pkgrovekit-core` stays framework-neutral: `Choice`, `WorkflowOutcome`, plan
   nodes — no executor types (enforced by the module graph + a public-API check).
 - The coroutine executor is the only one built now; the others are documented
   seams with explicit adoption triggers, satisfying the HEL-167 evaluation

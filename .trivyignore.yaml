@@ -1,4 +1,4 @@
-# RowRelay CVE exception register (HEL-124 §4).
+# PkgroveKit CVE exception register (HEL-124 §4).
 #
 # POLICY: no silent or permanent suppressions. Every entry REQUIRES all of:
 #   - id:            the advisory/CVE identifier

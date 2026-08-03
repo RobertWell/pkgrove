@@ -32,7 +32,7 @@ val batch = jdbi.withHandle<RowBatch, Exception> { handle ->
 }
 ```
 
-Inside a caller-owned JDBI transaction, RowRelay writers append without
+Inside a caller-owned JDBI transaction, PkgroveKit writers append without
 committing and reject `PerChunk` loudly — chunk-committing inside someone
 else's transaction would break their atomicity.
 

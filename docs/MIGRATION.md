@@ -2,7 +2,7 @@
 
 ## The adapter
 
-`rowrelay-postgres` makes PostgreSQL a first-class relational adapter with
+`pkgrovekit-postgres` makes PostgreSQL a first-class relational adapter with
 the same contract as Oracle/DuckDB — usable as source (standard ValueReader;
 pgjdbc returns JDK types) and target (`PostgresDialect`):
 
@@ -27,9 +27,9 @@ object AnalyticsFile : DatabaseKey("duck-file")    // file-backed target
 
 ## What "migration" means here — and what it never will
 
-RowRelay owns **data movement**, not schema evolution:
+PkgroveKit owns **data movement**, not schema evolution:
 
-| In scope (RowRelay) | Out of scope (use Flyway/Liquibase/app DDL) |
+| In scope (PkgroveKit) | Out of scope (use Flyway/Liquibase/app DDL) |
 |---|---|
 | bulk extract with arbitrary read SQL + named params | versioned schema history / migration ledgers |
 | target establishment per `TargetMode` (CREATE/REPLACE/APPEND/TEMP/FAIL_IF_EXISTS) from the *source-inferred* schema | hand-authored DDL evolution, indexes, constraints, grants |
@@ -38,7 +38,7 @@ RowRelay owns **data movement**, not schema evolution:
 | per-migration verification: row counts, `OperationReport`/`TransactionOutcome` records, warnings | "rollback my schema" |
 
 A typical migration workflow composes both: Flyway (or the app) establishes
-the target schema version, then RowRelay flows move the data — e.g. the
+the target schema version, then PkgroveKit flows move the data — e.g. the
 QuerySkiff/hello-stock Oracle→Postgres experience: per-table
 `Workflows.from(OldOracle, select).to(NewPostgres, PostgresDialect, table,
 Options(mode = APPEND, transaction-safe policy))`, chunked with checkpoints
@@ -48,5 +48,5 @@ between systems is just a second flow.
 
 This boundary is deliberate: a schema-migration framework has a versioned
 ledger, environment promotion, and rollback semantics that belong to a
-dedicated tool. RowRelay adding "just a little" of that would grow the exact
+dedicated tool. PkgroveKit adding "just a little" of that would grow the exact
 framework the HEL-120 lightweight gate forbids.

@@ -1,4 +1,4 @@
-# RowRelay security controls (HEL-124)
+# PkgroveKit security controls (HEL-124)
 
 ## Publication gate — what blocks a publish
 
@@ -71,7 +71,7 @@ vulnerability-free.
     different variant set (daemon JVM, plugin markers, dokka variants) and the
     file then rejects the CI build — proven twice. The canonical generator is
     the **`verification-metadata`** job on the LAN GitLab mirror
-    (`root/rowrelay`, `.gitlab-ci.yml`): it **union-appends** onto the
+    (`root/pkgrovekit`, `.gitlab-ci.yml`): it **union-appends** onto the
     committed file (Gradle's write mode adds entries and never removes them,
     so entries resolved by other enforcing environments are preserved), proves
     the enforced build passes on the GitLab runner, and exposes

@@ -1,4 +1,4 @@
-# RowRelay functional workflow API (HEL-125)
+# PkgroveKit functional workflow API (HEL-125)
 
 ## Shape
 
@@ -47,7 +47,7 @@ scope) — lives in **`docs/adr/0001-workflow-executor-architecture.md`**.
 retired in the Apache Attic with a smaller maintenance community, so it is not
 the recommended default — but its lightweight discovery/leasing model is a
 legitimate optional candidate. Any River/JGDMS adapter must live in a separate
-optional module, add no transitive dependency to `rowrelay-core` or the default
+optional module, add no transitive dependency to `pkgrovekit-core` or the default
 executor, pass CVE/Java/operational review, name a maintenance owner, and prove
 a real lightweight advantage before adoption. Every distributed backend — River
 or otherwise — obeys the rules already encoded here: definitions carry keys not
@@ -60,4 +60,4 @@ only after cleanup + transaction outcome.
 No DSL for arbitrary DAGs, no scheduler, no CDC — flows are linear
 read→transform→write pipelines by design; compose them in application code
 or an external scheduler. The workflow layer adds no new dependency (it
-lives in rowrelay-transfer).
+lives in pkgrovekit-transfer).

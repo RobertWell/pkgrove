@@ -1,15 +1,15 @@
-# RowRelay resource ownership and lifecycle (HEL-128)
+# PkgroveKit resource ownership and lifecycle (HEL-128)
 
-> RowRelay borrows resources for a declared scope, guarantees cleanup for
+> PkgroveKit borrows resources for a declared scope, guarantees cleanup for
 > every completion path, and never closes infrastructure it does not own.
 
 ## Ownership modes (implemented: `Databases`)
 
 | Mode | Who closes what | API |
 |---|---|---|
-| **Application-owned** | RowRelay borrows + returns connections (`close()` = pool return per the pool contract); the `DataSource`/pool itself is NEVER closed by RowRelay | `Databases.build { applicationOwned(Key, pool) }` |
-| **RowRelay-managed** | the registry is `AutoCloseable`; managed resources close on `close()`, reverse registration order, idempotent | `managed(Key, ds, closer)` |
-| **Caller-owned** | never enters the registry; flows through `TransactionPolicy.JoinExisting` — RowRelay never commits/rolls back/closes it | see docs/TRANSACTIONS.md |
+| **Application-owned** | PkgroveKit borrows + returns connections (`close()` = pool return per the pool contract); the `DataSource`/pool itself is NEVER closed by PkgroveKit | `Databases.build { applicationOwned(Key, pool) }` |
+| **PkgroveKit-managed** | the registry is `AutoCloseable`; managed resources close on `close()`, reverse registration order, idempotent | `managed(Key, ds, closer)` |
+| **Caller-owned** | never enters the registry; flows through `TransactionPolicy.JoinExisting` — PkgroveKit never commits/rolls back/closes it | see docs/TRANSACTIONS.md |
 
 Typed identities: `object SalesOracle : DatabaseKey("sales-oracle")` — many
 instances of one adapter type coexist; duplicate registration fails at
@@ -68,7 +68,7 @@ batches), and expose completion vs abandonment distinctly.
 ## DuckDB lifecycle notes (adapter-specific, kept in the adapter)
 
 - **In-memory** (`jdbc:duckdb:`) is per-connection: the connection IS the
-  database. Register it RowRelay-managed with the owning connection held for
+  database. Register it PkgroveKit-managed with the owning connection held for
   the runtime scope, or the dataset dies with a returned lease. Writers and
   a caller-owned transaction must share that same connection object.
 - **File-backed** databases support multiple connections in one process;

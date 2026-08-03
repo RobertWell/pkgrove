@@ -1,5 +1,5 @@
-// RowRelay root build: shared configuration for every module. Publishable
-// modules add the `rowrelay.publish` convention below; integration-tests
+// PkgroveKit root build: shared configuration for every module. Publishable
+// modules add the `pkgrovekit.publish` convention below; integration-tests
 // deliberately does not (it is never published — HEL-123 §2).
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -28,9 +28,9 @@ tasks.cyclonedxBom {
 // coordinates are never published (the publish workflow refuses any version
 // containing `-SNAPSHOT`/`-dev`).
 // 0.3.0 = first release under the Maven-Central-verified namespace com.pkgrove
-// (HEL-189). 0.2.0 artifacts remain immutable at io.maxxga.rowrelay in the
+// (HEL-189). 0.2.0 artifacts remain immutable at com.pkgrove.pkgrovekit in the
 // GitLab/GitHub registries; consumers migrate coordinates on upgrade.
-val rowrelayRelease = "0.3.0"
+val pkgrovekitRelease = "0.4.0"
 
 /** Short commit sha for `-Pdev` local builds; safe fallback if git is absent so
  *  a dev build never fails on version resolution. Only invoked when `-Pdev` is
@@ -39,17 +39,17 @@ fun devBuildVersion(): String = try {
     val sha = ProcessBuilder("git", "rev-parse", "--short=8", "HEAD")
         .redirectErrorStream(true).start()
         .inputStream.bufferedReader().readText().trim()
-    if (sha.isEmpty()) "$rowrelayRelease-dev" else "$rowrelayRelease-dev.$sha"
+    if (sha.isEmpty()) "$pkgrovekitRelease-dev" else "$pkgrovekitRelease-dev.$sha"
 } catch (_: Exception) {
-    "$rowrelayRelease-dev"
+    "$pkgrovekitRelease-dev"
 }
 
 allprojects {
     // HEL-189: Maven-Central-verified namespace (owner-verified 2026-08-02).
-    // Java package names stay io.maxxga.rowrelay — groupId and code packages
+    // Java package names stay com.pkgrove.pkgrovekit — groupId and code packages
     // are independent, and a source-wide rename would churn every consumer.
     group = "com.pkgrove"
-    version = if (project.hasProperty("dev")) devBuildVersion() else rowrelayRelease
+    version = if (project.hasProperty("dev")) devBuildVersion() else pkgrovekitRelease
 
     repositories {
         mavenCentral()
@@ -86,7 +86,7 @@ subprojects {
 
 /** Publishable-module convention: sources + Dokka-javadoc jars, maven-publish
  *  to GitHub Packages (credentials from the Actions environment only). */
-configure(subprojects.filter { it.name.startsWith("rowrelay-") }) {
+configure(subprojects.filter { it.name.startsWith("pkgrovekit-") }) {
     apply(plugin = "maven-publish")
     apply(plugin = "org.jetbrains.dokka")
     // HEL-189: PGP signing for Maven Central. Gradle-core plugin (no new
@@ -122,16 +122,16 @@ configure(subprojects.filter { it.name.startsWith("rowrelay-") }) {
                 artifact(dokkaJavadocJar)
                 pom {
                     name.set(project.name)
-                    description.set("RowRelay — reusable Kotlin data library: " +
+                    description.set("PkgroveKit — reusable Kotlin data library: " +
                                     "dynamic JDBC/JDBI data access and bidirectional batch transfer")
-                    url.set("https://github.com/RobertWell/rowrelay")
+                    url.set("https://github.com/RobertWell/pkgrovekit")
                     // HEL-189 Maven Central metadata. developers/scm/issueManagement
                     // complete. License decided by the owner: MIT (2026-08).
                     // Default emits MIT on every published artifact; overridable
-                    // via -Prowrelay.license.name/.url. Central REQUIRES it — see
+                    // via -Ppkgrovekit.license.name/.url. Central REQUIRES it — see
                     // docs/RELEASING.md.
-                    val licName = (findProperty("rowrelay.license.name") as String?) ?: "MIT License"
-                    val licUrl = (findProperty("rowrelay.license.url") as String?) ?: "https://opensource.org/license/mit"
+                    val licName = (findProperty("pkgrovekit.license.name") as String?) ?: "MIT License"
+                    val licUrl = (findProperty("pkgrovekit.license.url") as String?) ?: "https://opensource.org/license/mit"
                     licenses {
                         license {
                             name.set(licName)
@@ -147,9 +147,9 @@ configure(subprojects.filter { it.name.startsWith("rowrelay-") }) {
                         }
                     }
                     scm {
-                        connection.set("scm:git:https://github.com/RobertWell/rowrelay.git")
-                        developerConnection.set("scm:git:ssh://git@github.com/RobertWell/rowrelay.git")
-                        url.set("https://github.com/RobertWell/rowrelay")
+                        connection.set("scm:git:https://github.com/RobertWell/pkgrovekit.git")
+                        developerConnection.set("scm:git:ssh://git@github.com/RobertWell/pkgrovekit.git")
+                        url.set("https://github.com/RobertWell/pkgrovekit")
                     }
                     issueManagement {
                         system.set("Linear")
@@ -161,7 +161,7 @@ configure(subprojects.filter { it.name.startsWith("rowrelay-") }) {
         repositories {
             maven {
                 name = "GitHubPackages"
-                url = uri("https://maven.pkg.github.com/RobertWell/rowrelay")
+                url = uri("https://maven.pkg.github.com/RobertWell/pkgrovekit")
                 credentials {
                     username = System.getenv("GITHUB_ACTOR")
                     password = System.getenv("GITHUB_TOKEN")
@@ -173,7 +173,7 @@ configure(subprojects.filter { it.name.startsWith("rowrelay-") }) {
             // accepted in-cluster hop (pod->service on a single node; the
             // job-scoped token expires with the job — same tradeoff as the
             // datakit deploy, documented there).
-            val gitlabMavenUrl = System.getenv("ROWRELAY_GITLAB_MAVEN_URL")
+            val gitlabMavenUrl = System.getenv("PKGROVEKIT_GITLAB_MAVEN_URL")
             if (!gitlabMavenUrl.isNullOrBlank() && System.getenv("CI_JOB_TOKEN") != null) {
                 maven {
                     name = "GitLabLan"

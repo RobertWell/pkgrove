@@ -1,4 +1,4 @@
-# RowRelay security gates (HEL-124): CVE scan over the LOCKED dependency graph,
+# PkgroveKit security gates (HEL-124): CVE scan over the LOCKED dependency graph,
 # SBOM generation, and the exception-expiry policy. Runs on every push/PR that
 # can change exposure, on a weekly schedule (new CVEs without code changes),
 # and as a required dependency of the publish workflow.

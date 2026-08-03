@@ -1,16 +1,16 @@
-# RowRelay architecture and dependency boundaries
+# PkgroveKit architecture and dependency boundaries
 
 ```
-rowrelay-core      zero-dep contracts: Schema/Row/RowBatch, warnings,
+pkgrovekit-core      zero-dep contracts: Schema/Row/RowBatch, warnings,
                    ConversionPolicy, CancelToken, Identifiers, OperationReport
       ▲
-rowrelay-jdbc      java.sql only: JdbcReader (streaming), JdbcBatchWriter
+pkgrovekit-jdbc      java.sql only: JdbcReader (streaming), JdbcBatchWriter
                    (commit policies), JdbcSchemas, ValueReader seam, SqlDialect
       ▲                       ▲                    ▲
-rowrelay-jdbi      rowrelay-oracle        rowrelay-duckdb
+pkgrovekit-jdbi      pkgrovekit-oracle        pkgrovekit-duckdb
 (jdbi3-core)       (driver compileOnly)   (driver consumer-supplied)
       ▲
-rowrelay-transfer  dialect-agnostic engine over SqlDialect + the batch
+pkgrovekit-transfer  dialect-agnostic engine over SqlDialect + the batch
                    primitives; direction = which side is source vs target
 ```
 
@@ -22,7 +22,7 @@ Why consumers import only what they need:
 - **dialect modules are direction-neutral**: each database adapter serves as
   source (its `ValueReader`) and target (its `SqlDialect`) — no `-to-`/`-from-`
   artifacts.
-- **drivers are consumer-controlled**: `rowrelay-oracle` compiles against
+- **drivers are consumer-controlled**: `pkgrovekit-oracle` compiles against
   ojdbc (`compileOnly`) but never ships it; DuckDB likewise.
 - **integration-tests is never published** — it holds cross-module scenarios
   and the compiled README examples.

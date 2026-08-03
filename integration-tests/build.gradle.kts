@@ -5,13 +5,13 @@ plugins {
     java
 }
 dependencies {
-    testImplementation(project(":rowrelay-core"))
-    testImplementation(project(":rowrelay-jdbc"))
-    testImplementation(project(":rowrelay-jdbi"))
-    testImplementation(project(":rowrelay-duckdb"))
-    testImplementation(project(":rowrelay-transfer"))
-    testImplementation(project(":rowrelay-oracle"))
-    testImplementation(project(":rowrelay-postgres"))
+    testImplementation(project(":pkgrovekit-core"))
+    testImplementation(project(":pkgrovekit-jdbc"))
+    testImplementation(project(":pkgrovekit-jdbi"))
+    testImplementation(project(":pkgrovekit-duckdb"))
+    testImplementation(project(":pkgrovekit-transfer"))
+    testImplementation(project(":pkgrovekit-oracle"))
+    testImplementation(project(":pkgrovekit-postgres"))
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.testcontainers.oracle)
     testImplementation(libs.testcontainers.junit)

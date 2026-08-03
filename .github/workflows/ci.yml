@@ -1,4 +1,4 @@
-# RowRelay CI (HEL-123). Split into two jobs so each gets a full hosted runner:
+# PkgroveKit CI (HEL-123). Split into two jobs so each gets a full hosted runner:
 #  - `check`: unit + contract + module tests, dialect suites, and the compiled
 #    documentation examples (fast, deterministic).
 #  - `integration`: the Oracle + Postgres testcontainer suite on its OWN runner

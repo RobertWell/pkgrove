@@ -1,4 +1,4 @@
-# Oracle adapter (`rowrelay-oracle`)
+# Oracle adapter (`pkgrovekit-oracle`)
 
 - **Identifier policy**: UPPERCASE-then-quote — generated SQL matches objects
   created without quotes (Oracle folds unquoted names up). One policy, applied
