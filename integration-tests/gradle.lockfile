@@ -6,6 +6,7 @@ com.github.docker-java:docker-java-api:3.4.2=testCompileClasspath,testImplementa
 com.github.docker-java:docker-java-transport-zerodep:3.4.2=testCompileClasspath,testImplementationDependenciesMetadata,testRuntimeClasspath
 com.github.docker-java:docker-java-transport:3.4.2=testCompileClasspath,testImplementationDependenciesMetadata,testRuntimeClasspath
 com.oracle.database.jdbc:ojdbc11:23.3.0.23.09=testRuntimeClasspath
+com.zaxxer:HikariCP:5.1.0=testCompileClasspath,testImplementationDependenciesMetadata,testRuntimeClasspath
 io.leangen.geantyref:geantyref:1.3.14=testCompileClasspath,testImplementationDependenciesMetadata,testRuntimeClasspath
 junit:junit:4.13.2=testCompileClasspath,testImplementationDependenciesMetadata,testRuntimeClasspath
 net.java.dev.jna:jna:5.13.0=testCompileClasspath,testImplementationDependenciesMetadata,testRuntimeClasspath

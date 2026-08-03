@@ -20,4 +20,7 @@ dependencies {
     testRuntimeOnly(libs.ojdbc11)
     testRuntimeOnly(libs.postgres.jdbc)
     testImplementation(libs.testcontainers.postgres)
+    // HEL-129: a REAL pool for the lifecycle matrix — proxy DataSources cannot
+    // prove pool return/eviction behavior.
+    testImplementation(libs.hikaricp)
 }
