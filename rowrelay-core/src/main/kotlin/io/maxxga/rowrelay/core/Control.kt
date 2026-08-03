@@ -15,14 +15,19 @@ import java.util.concurrent.atomic.AtomicBoolean
  * adapters additionally propagate cancellation to the driver where supported
  * (Statement.cancel).
  */
-class CancelToken(private val deadlineNanos: Long? = null) {
+class CancelToken(
+    private val deadlineNanos: Long? = null,
+    /** HEL-128: parents this token is linked to — cancelled when ANY parent is. */
+    private val parents: List<CancelToken> = emptyList(),
+) {
     private val cancelled = AtomicBoolean(false)
 
     fun cancel() { cancelled.set(true) }
 
     val isCancelled: Boolean
         get() = cancelled.get() ||
-            (deadlineNanos != null && System.nanoTime() >= deadlineNanos)
+            (deadlineNanos != null && System.nanoTime() >= deadlineNanos) ||
+            parents.any { it.isCancelled }
 
     fun throwIfCancelled() {
         if (isCancelled) throw OperationCancelledException()
@@ -37,6 +42,17 @@ class CancelToken(private val deadlineNanos: Long? = null) {
         /** A token that never expires (explicit cancel only). */
         @JvmStatic
         fun none(): CancelToken = CancelToken(null)
+
+        /**
+         * A token cancelled when ANY of [tokens] is cancelled (or itself).
+         * This is the coroutine-to-JDBC cancellation bridge (HEL-128): an
+         * executor links each flow's own token to a scope token it cancels on
+         * structured cancellation, so blocking JDBC work observes the cancel
+         * at its next cooperative checkpoint and releases its resources.
+         */
+        @JvmStatic
+        fun linked(vararg tokens: CancelToken): CancelToken =
+            CancelToken(null, tokens.toList())
     }
 }
 

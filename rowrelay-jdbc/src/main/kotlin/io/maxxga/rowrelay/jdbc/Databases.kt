@@ -43,6 +43,15 @@ class Databases private constructor(
         RuntimeException("no $key connection lease within ${waitedMillis}ms " +
                          "(budget exhausted — see resource metrics)")
 
+    /**
+     * A cleanup step (connection return / managed close) failed AFTER the
+     * primary work succeeded. Cleanup failures are never silent (HEL-128
+     * review): when the block itself failed they are attached to the primary
+     * failure as suppressed exceptions; when the block succeeded they surface
+     * as this exception.
+     */
+    class CleanupException(message: String, cause: Throwable) : RuntimeException(message, cause)
+
     internal class Entry(
         val key: DatabaseKey,
         val dataSource: DataSource,
@@ -52,12 +61,17 @@ class Databases private constructor(
         val acquisitionTimeoutMillis: Long,
         /** managed-only closer for the underlying resource (e.g. Hikari.close). */
         val managedCloser: (() -> Unit)?,
+        /** pool-specific eviction hook (e.g. HikariDataSource::evictConnection).
+         *  Null → best-effort [java.sql.Connection.abort]. */
+        val invalidator: ((Connection) -> Unit)?,
     ) {
         val budget = Semaphore(maxConnections, true)   // fair: documented ordering
         val active = AtomicLong(0)
         val peak = AtomicLong(0)   // max concurrent leases seen
         val timedOut = AtomicLong(0)
-        val discarded = AtomicLong(0)
+        val rolledBack = AtomicLong(0)   // uncertain tx recovered by rollback (conn stays healthy)
+        val discarded = AtomicLong(0)    // genuinely invalidated (evicted/aborted, NOT pool-returned)
+        val cleanupFailures = AtomicLong(0)
         val closed = AtomicBoolean(false)
     }
 
@@ -65,12 +79,15 @@ class Databases private constructor(
      *  coupling — plain values the app forwards wherever it likes). */
     data class Metrics(val key: String, val activeLeases: Long, val maxConcurrentLeases: Long,
                        val waiting: Int, val timedOutAcquisitions: Long,
-                       val discardedConnections: Long)
+                       val discardedConnections: Long,
+                       val rolledBackTransactions: Long = 0,
+                       val cleanupFailures: Long = 0)
 
     fun metrics(): List<Metrics> = order.map { k ->
         val e = entries.getValue(k)
         Metrics(k.keyName, e.active.get(), e.peak.get(), e.budget.queueLength,
-                e.timedOut.get(), e.discarded.get())
+                e.timedOut.get(), e.discarded.get(), e.rolledBack.get(),
+                e.cleanupFailures.get())
     }
 
     /**
@@ -104,21 +121,63 @@ class Databases private constructor(
         val nowActive = e.active.incrementAndGet()
         e.peak.updateAndGet { if (nowActive > it) nowActive else it }
         var conn: Connection? = null
+        var primary: Throwable? = null
         try {
             conn = e.dataSource.connection
             return block(conn)
         } catch (t: Throwable) {
-            // uncertain transaction state? invalidate, never return as healthy
+            primary = t
+            // Uncertain transaction state → roll back. A SUCCESSFUL rollback
+            // restores a known-clean connection (pool return is then correct);
+            // a FAILED rollback means the connection itself is broken → it is
+            // genuinely invalidated (pool eviction hook / Connection.abort),
+            // never silently returned to the pool as healthy. Every cleanup
+            // failure rides the primary failure as a suppressed exception.
             conn?.let { c ->
-                runCatching {
-                    if (!c.autoCommit) { e.discarded.incrementAndGet(); c.rollback() }
+                val uncertain = try { !c.autoCommit } catch (state: Throwable) {
+                    t.addSuppressed(state); true
+                }
+                if (uncertain) {
+                    try {
+                        c.rollback(); e.rolledBack.incrementAndGet()
+                    } catch (rb: Throwable) {
+                        t.addSuppressed(rb)
+                        invalidate(e, c, t)
+                    }
                 }
             }
             throw t
         } finally {
-            runCatching { conn?.close() }   // pool-return per the pool contract
+            try {
+                conn?.close()   // pool-return per the pool contract
+            } catch (cl: Throwable) {
+                // Fail-visible cleanup (HEL-128 review): never report success
+                // when the return failed.
+                e.cleanupFailures.incrementAndGet()
+                val p = primary
+                if (p != null) p.addSuppressed(cl)
+                else {
+                    e.active.decrementAndGet()
+                    e.budget.release()
+                    throw CleanupException("returning $key connection failed after successful work", cl)
+                }
+            }
             e.active.decrementAndGet()
             e.budget.release()
+        }
+    }
+
+    /** Genuine invalidation: pool eviction hook if registered, else JDBC's own
+     *  [Connection.abort] (terminate + release resources) — never a plain
+     *  pool-return of a broken connection. */
+    private fun invalidate(e: Entry, c: Connection, primary: Throwable) {
+        e.discarded.incrementAndGet()
+        try {
+            val inv = e.invalidator
+            if (inv != null) inv(c) else c.abort(Runnable::run)
+        } catch (iv: Throwable) {
+            e.cleanupFailures.incrementAndGet()
+            primary.addSuppressed(iv)
         }
     }
 
@@ -141,38 +200,55 @@ class Databases private constructor(
     }
 
     /** Close ROWRELAY_MANAGED resources (reverse registration order,
-     *  idempotent). APPLICATION_OWNED pools are untouched — not ours. */
+     *  idempotent). APPLICATION_OWNED pools are untouched — not ours.
+     *  Every closer still runs even if an earlier one fails; failures are
+     *  aggregated and THROWN (fail-visible), never swallowed. */
     override fun close() {
+        var failure: CleanupException? = null
         for (k in order.reversed()) {
             val e = entries.getValue(k)
             if (e.ownership == Ownership.ROWRELAY_MANAGED &&
                 e.closed.compareAndSet(false, true)) {
-                runCatching { e.managedCloser?.invoke() }
+                try {
+                    e.managedCloser?.invoke()
+                } catch (t: Throwable) {
+                    e.cleanupFailures.incrementAndGet()
+                    val f = failure
+                    if (f == null) failure = CleanupException("closing managed resource $k failed", t)
+                    else f.addSuppressed(t)
+                }
             } else {
                 e.closed.set(true)
             }
         }
+        failure?.let { throw it }
     }
 
     class Builder internal constructor() {
         private val entries = linkedMapOf<DatabaseKey, Entry>()
 
-        /** Register an APPLICATION-OWNED pool: borrowed, never closed. */
+        /** Register an APPLICATION-OWNED pool: borrowed, never closed.
+         *  [invalidator] is the pool's genuine eviction hook (e.g.
+         *  `HikariDataSource::evictConnection`) used when a connection's
+         *  transaction state cannot be recovered; without it RowRelay falls
+         *  back to [java.sql.Connection.abort]. Pooled apps SHOULD supply it. */
         @JvmOverloads
         fun applicationOwned(key: DatabaseKey, dataSource: DataSource,
                              dialect: SqlDialect? = null, maxConnections: Int = 4,
-                             acquisitionTimeoutMillis: Long = 30_000) {
+                             acquisitionTimeoutMillis: Long = 30_000,
+                             invalidator: ((Connection) -> Unit)? = null) {
             register(Entry(key, dataSource, Ownership.APPLICATION_OWNED, dialect,
-                           maxConnections, acquisitionTimeoutMillis, null))
+                           maxConnections, acquisitionTimeoutMillis, null, invalidator))
         }
 
         /** Register a ROWRELAY-MANAGED resource with its closer. */
         @JvmOverloads
         fun managed(key: DatabaseKey, dataSource: DataSource, closer: () -> Unit,
                     dialect: SqlDialect? = null, maxConnections: Int = 4,
-                    acquisitionTimeoutMillis: Long = 30_000) {
+                    acquisitionTimeoutMillis: Long = 30_000,
+                    invalidator: ((Connection) -> Unit)? = null) {
             register(Entry(key, dataSource, Ownership.ROWRELAY_MANAGED, dialect,
-                           maxConnections, acquisitionTimeoutMillis, closer))
+                           maxConnections, acquisitionTimeoutMillis, closer, invalidator))
         }
 
         private fun register(e: Entry) {

@@ -4,6 +4,8 @@ import io.maxxga.rowrelay.core.WorkflowOutcome
 import io.maxxga.rowrelay.duckdb.DuckDbDialect
 import io.maxxga.rowrelay.jdbc.DatabaseKey
 import io.maxxga.rowrelay.jdbc.Databases
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -107,6 +109,62 @@ class StructuredExecutorTest {
             // affinity proof: maxConcurrency said 4, but the 1-lease budget on the
             // target DB never let more than ONE write run at a time.
             assertEquals(1L, dbs.metrics().single { it.key == "dst-db" }.maxConcurrentLeases)
+        }
+    }
+
+    @Test
+    fun `caller cancellation stops in-flight blocking JDBC work promptly and releases leases`() = runBlocking {
+        // HEL-128 review: the coroutine-to-JDBC bridge. The flow's row stream is
+        // slowed to ~100ms/row (50 rows ≈ 5s full run) with per-row cooperative
+        // checkpoints (readBatchSize=1). Cancelling the caller must (a) propagate
+        // the linked scope token into the BLOCKING JDBC work so it aborts at the
+        // next checkpoint instead of running to completion, and (b) release
+        // every lease. The processed-row counter is the proof of promptness.
+        val s = "jdbc:duckdb:${tmp.resolve("s5.db")}"; val d = "jdbc:duckdb:${tmp.resolve("d5.db")}"
+        seed(s)
+        Databases.build {
+            applicationOwned(Src, dataSource(s)); applicationOwned(Dst, dataSource(d))
+        }.use { dbs ->
+            val processed = java.util.concurrent.atomic.AtomicInteger(0)
+            val slow = Workflows.from(Src, "SELECT * FROM src")
+                .transform { r -> processed.incrementAndGet(); Thread.sleep(100); r }
+                .to(Dst, DuckDbDialect, "slow_sink",
+                    Transfer.Options(readBatchSize = 1, fetchSize = 1))
+            val job = launch {
+                Workflows.executeStructured(listOf(slow), dbs)
+            }
+            delay(400)
+            val t0 = System.nanoTime()
+            job.cancel()
+            job.join()   // waits for the blocking work to actually stop
+            val stopMillis = (System.nanoTime() - t0) / 1_000_000
+            // stopped early — nowhere near the 50-row full run
+            assertTrue(processed.get() < 25, "processed ${processed.get()} rows; bridge did not stop the work")
+            assertTrue(stopMillis < 3_000, "took ${stopMillis}ms to stop after cancel")
+            assertTrue(dbs.metrics().all { it.activeLeases == 0L })   // leases released
+        }
+    }
+
+    @Test
+    fun `fail-fast sibling failure cancels the slow branch promptly via the bridge`() = runBlocking {
+        val s = "jdbc:duckdb:${tmp.resolve("s6.db")}"; val d = "jdbc:duckdb:${tmp.resolve("d6.db")}"
+        seed(s)
+        Databases.build {
+            applicationOwned(Src, dataSource(s), maxConnections = 2)
+            applicationOwned(Dst, dataSource(d), maxConnections = 2)
+        }.use { dbs ->
+            val processed = java.util.concurrent.atomic.AtomicInteger(0)
+            val slow = Workflows.from(Src, "SELECT * FROM src")
+                .transform { r -> processed.incrementAndGet(); Thread.sleep(100); r }
+                .to(Dst, DuckDbDialect, "slow_sink",
+                    Transfer.Options(readBatchSize = 1, fetchSize = 1))
+            val bad = Workflows.from(Src, "SELECT * FROM does_not_exist").to(Dst, DuckDbDialect, "boom")
+            val outcome = Workflows.executeStructured(listOf(slow, bad), dbs,
+                policy = Workflows.BranchPolicy.FAIL_FAST)
+            assertTrue(outcome is WorkflowOutcome.Failed, outcome.toString())
+            // the slow sibling was stopped by the scope token, not run to completion
+            assertTrue(processed.get() < 25, "processed ${processed.get()} rows; sibling kept running")
+            assertTrue(dbs.metrics().all { it.activeLeases == 0L })
         }
     }
 

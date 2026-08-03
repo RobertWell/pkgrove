@@ -11,6 +11,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.sync.Semaphore
@@ -123,6 +125,10 @@ object Workflows {
                     }
                 }
             FlowResult(flow, report, null)
+        } catch (ce: CancellationException) {
+            // NEVER swallowed into a FlowResult: structured cancellation must
+            // propagate so the scope can cancel siblings (HEL-128 review).
+            throw ce
         } catch (t: Throwable) {
             FlowResult(flow, null, t)
         }
@@ -183,20 +189,49 @@ object Workflows {
         require(maxConcurrency > 0) { "maxConcurrency must be positive" }
         if (flows.isEmpty()) return WorkflowOutcome.Completed(emptyList())
         val gate = Semaphore(maxConcurrency)
+        // Coroutine-to-JDBC cancellation bridge (HEL-128 review): each flow's
+        // token is LINKED to a scope token that fires on structured
+        // cancellation (caller cancel or FAIL_FAST sibling failure). Blocking
+        // JDBC work observes the cancel at its next cooperative checkpoint
+        // (reader row-batch / writer batch boundaries, lease-wait slices) and
+        // releases statements, transactions, and leases promptly — instead of
+        // running to completion after the scope has already given up on it.
+        val scopeToken = io.maxxga.rowrelay.core.CancelToken.none()
+        fun bridged(f: ExecutableFlow): ExecutableFlow = f.copy(
+            options = f.options.copy(
+                cancelToken = io.maxxga.rowrelay.core.CancelToken.linked(
+                    f.options.cancelToken, scopeToken)))
+        // The token must fire the MOMENT the scope starts cancelling — not after
+        // the scope has finished waiting for its children (the blocking child is
+        // exactly what the token is needed to stop). A watcher coroutine's
+        // `finally` runs at cancellation-start, which is that moment.
         return try {
             val results = when (policy) {
                 BranchPolicy.SUPERVISED -> supervisorScope {
+                    val watcher = launch {
+                        try { awaitCancellation() } finally { scopeToken.cancel() }
+                    }
                     // runOne is exception-safe (returns FlowResult), so a failing
                     // branch does not cancel its siblings — both outcomes retained.
-                    flows.map { f -> async(Dispatchers.IO) { gate.withPermit { runOne(f, databases) } } }
+                    val rs = flows.map { f -> async(Dispatchers.IO) { gate.withPermit { runOne(bridged(f), databases) } } }
                         .awaitAll()
+                    watcher.cancel()   // normal completion: all work already done
+                    rs
                 }
                 BranchPolicy.FAIL_FAST -> coroutineScope {
-                    flows.map { f -> async(Dispatchers.IO) {
-                        val r = gate.withPermit { runOne(f, databases) }
-                        if (r.error != null) throw FlowFailed(r)   // cancels the scope
+                    val watcher = launch {
+                        try { awaitCancellation() } finally { scopeToken.cancel() }
+                    }
+                    val rs = flows.map { f -> async(Dispatchers.IO) {
+                        val r = gate.withPermit { runOne(bridged(f), databases) }
+                        if (r.error != null) {
+                            scopeToken.cancel()      // siblings stop at their next checkpoint
+                            throw FlowFailed(r)      // cancels the scope
+                        }
                         r
                     } }.awaitAll()
+                    watcher.cancel()
+                    rs
                 }
             }
             val failures = results.filter { it.error != null }
@@ -204,10 +239,13 @@ object Workflows {
             else WorkflowOutcome.Partial(results,
                 failures.map { BranchFailure(it.flow.sinkTable ?: "?", it.error!!) })
         } catch (e: CancellationException) {
+            scopeToken.cancel()                       // stop in-flight JDBC work
             throw e                                   // preserve cancellation
         } catch (e: FlowFailed) {
+            scopeToken.cancel()                       // siblings stop promptly
             WorkflowOutcome.Failed(e.result.error!!)  // FAIL_FAST: first failure wins
         } catch (e: Throwable) {
+            scopeToken.cancel()
             WorkflowOutcome.Failed(e)
         }
     }
