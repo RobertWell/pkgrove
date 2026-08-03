@@ -21,11 +21,19 @@ jobs:
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v3
       - run: ./gradlew clean check -x :integration-tests:test
+      # HEL-129: generate the scenario-to-test traceability report and fail if
+      # docs/test-traceability.md references a test class that no longer exists.
+      - name: Generate test traceability inventory (+ drift guard)
+        if: always()
+        run: bash scripts/gen-test-inventory.sh build/test-inventory.csv
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: check-reports
-          path: '**/build/reports/tests/**'
+          path: |
+            **/build/reports/tests/**
+            build/test-inventory.csv
+            docs/test-traceability.md
           retention-days: 7
 
   integration:
