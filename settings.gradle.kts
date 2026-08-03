@@ -20,5 +20,10 @@ include(
     "pkgrovekit-jta",
     "pkgrovekit-narayana",
     "pkgrovekit-saga",
+    // HEL-172: optional framework adapters — frameworks never leak into the
+    // standard modules (assertCoordinationIsolation covers these groups too).
+    "pkgrovekit-quarkus",
+    "pkgrovekit-spring-boot-starter",
     "integration-tests",
+    "integration-tests-quarkus",
 )

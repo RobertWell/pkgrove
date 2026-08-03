@@ -92,7 +92,11 @@ val standardModules = listOf(
     "pkgrovekit-core", "pkgrovekit-jdbc", "pkgrovekit-jdbi",
     "pkgrovekit-oracle", "pkgrovekit-duckdb", "pkgrovekit-transfer", "pkgrovekit-postgres",
 )
-val forbiddenCoordinationGroups = listOf("jakarta.transaction", "org.jboss.narayana")
+val forbiddenCoordinationGroups = listOf(
+    "jakarta.transaction", "org.jboss.narayana",
+    // HEL-172: framework adapters are opt-in too
+    "org.springframework", "io.quarkus", "io.agroal", "com.zaxxer",
+)
 
 val assertCoordinationIsolation = tasks.register("assertCoordinationIsolation") {
     description = "Fails if a standard module's runtimeClasspath contains JTA/Narayana (HEL-170)"

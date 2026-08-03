@@ -90,6 +90,9 @@ handling the typed outcome                commit/rollback choreography, cleanup,
 
 ## Learn more
 
+- **Framework adapters (optional):** [docs/framework-adapters.md](docs/framework-adapters.md) —
+  Quarkus (CDI/Agroal) and Spring Boot (auto-configuration/HikariCP) integration
+  over framework-owned pools; `@Transactional`-bound `JoinExisting` for Spring.
 - **Cross-database coordination (optional):** [docs/coordination.md](docs/coordination.md) —
   when a transfer genuinely must be atomic across two XA-capable databases
   (`pkgrovekit-coordination-api` + `pkgrovekit-jta` + `pkgrovekit-narayana`),

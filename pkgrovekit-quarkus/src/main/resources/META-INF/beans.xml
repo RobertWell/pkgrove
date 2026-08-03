@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Marks pkgrovekit-quarkus as a CDI bean archive so Quarkus indexes it and
+     discovers PkgroveKitProducer (HEL-172). Discovery is `annotated`: only
+     bean-defining-annotated classes become beans. -->
+<beans xmlns="https://jakarta.ee/xml/ns/jakartaee"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="https://jakarta.ee/xml/ns/jakartaee https://jakarta.ee/xml/ns/jakartaee/beans_4_0.xsd"
+       version="4.0"
+       bean-discovery-mode="annotated">
+</beans>

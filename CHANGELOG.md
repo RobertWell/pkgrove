@@ -5,6 +5,18 @@ All notable changes to PkgroveKit. Pre-stable: breaking changes may occur in any
 
 ## Unreleased
 
+- HEL-172: optional framework adapters. `pkgrovekit-quarkus` (CDI producer over
+  Agroal-managed datasources; explicit MP-Config datasource-to-dialect mapping,
+  no classpath scanning; BlockingBoundary event-loop guard; JTA delegates to
+  pkgrovekit-jta) and `pkgrovekit-spring-boot-starter` (auto-configuration over
+  existing DataSource beans incl. HikariCP; backs off to user-supplied Relay
+  beans; SpringTransactions.joinCurrent resolves the @Transactional-bound
+  connection via DataSourceUtils and fails clearly outside a transaction).
+  Framework pools are APPLICATION_OWNED — never closed, never duplicated;
+  startup validation fails fast on unknown dialects / missing beans. Standard
+  modules stay framework-free (assertCoordinationIsolation now also forbids
+  org.springframework/io.quarkus/io.agroal/com.zaxxer). See
+  docs/framework-adapters.md.
 - HEL-170: optional cross-database transaction coordination. New modules
   `pkgrovekit-coordination-api` (inert plans, capabilities, typed validation +
   global outcomes incl. InDoubt/HeuristicMixed/RecoveryPending),
