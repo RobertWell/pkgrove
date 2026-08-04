@@ -91,3 +91,51 @@ publish-registry:
         exit 0
       fi
       ./gradlew --no-daemon publishAllPublicationsToGitLabLanRepository -x :integration-tests:test
+
+# ── HEL-129: scheduled stress/soak tier ──────────────────────────────────────
+# Distinct from `verification-metadata` (which excludes :integration-tests:test
+# for cycle-time). Runs the live-Postgres stress + lifecycle + backpressure ITs
+# over dind on the privileged runner. Triggers: pipeline schedule (nightly) or
+# an explicit STRESS_TIER=1 pipeline (manual proof runs). The Oracle lifecycle
+# matrix (OracleRealPoolLifecycleIT) stays in the local/full matrix — its 3 GB
+# image is not worth a nightly pull; traceability doc records the split.
+stress-soak:
+  stage: verify
+  image: maven:3.9-eclipse-temurin-21
+  timeout: 90m
+  tags:
+    - privileged
+  services:
+    - name: docker:27-dind
+      alias: docker
+      command: ["--dns", "8.8.8.8", "--dns", "8.8.4.4"]
+      variables:
+        DOCKER_TLS_CERTDIR: ""
+  variables:
+    DOCKER_HOST: tcp://localhost:2375
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_DRIVER: overlay2
+    GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle-home"
+    GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx1g"
+  cache:
+    key: pkgrovekit-gradle
+    paths:
+      - .gradle-home/caches
+      - .gradle-home/wrapper
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $STRESS_TIER == "1"
+  script:
+    - >
+      ./gradlew --no-daemon :integration-tests:test
+      --tests "com.pkgrove.pkgrovekit.it.LifecycleStressIT"
+      --tests "com.pkgrove.pkgrovekit.it.RealPoolLifecycleIT"
+      --tests "com.pkgrove.pkgrovekit.it.SlowTargetBackpressureIT"
+  artifacts:
+    when: always
+    paths:
+      - integration-tests/build/test-results/test/
+      - integration-tests/build/reports/tests/test/
+    reports:
+      junit: integration-tests/build/test-results/test/TEST-*.xml
+    expire_in: 30 days
