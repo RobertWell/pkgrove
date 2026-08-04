@@ -13,6 +13,11 @@ dependencies {
     implementation(project(":pkgrovekit-quarkus"))
     implementation(libs.quarkus.agroal)
     implementation(libs.quarkus.jdbc.h2)
+    // Caller-owned JTA transactions for the JoinExisting proof (HEL-172):
+    // already on the runtime classpath transitively via quarkus-agroal, declared
+    // explicitly because tests compile against io.quarkus.narayana.jta.
+    // QuarkusTransaction. Version governed by the enforced BOM above.
+    implementation("io.quarkus:quarkus-narayana-jta")
     testImplementation(libs.quarkus.junit5)
     testImplementation(libs.junit.jupiter)
 }
