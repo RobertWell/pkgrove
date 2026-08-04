@@ -30,7 +30,9 @@ object PostgresCopyLoader : BulkLoader {
 
     override val name: String = "postgres-copy"
 
-    override fun supports(connection: Connection, schema: Schema): BulkSupport {
+    // COPY names its columns explicitly, so table shape (extra/default columns,
+    // different order) is handled by the server — no physical-shape check needed.
+    override fun supports(connection: Connection, table: String, schema: Schema): BulkSupport {
         val binary = schema.columns.firstOrNull { it.kind == ValueKind.BINARY }
         if (binary != null) {
             return BulkSupport.No("column '${binary.name}' is BINARY — COPY CSV cannot carry bytea; use the batched path")

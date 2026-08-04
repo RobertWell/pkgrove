@@ -14,9 +14,11 @@ All notable changes to PkgroveKit. Pre-stable: breaking changes may occur in any
   bind-adapted identically, the load is all-or-nothing (failure rolls back
   everything and throws `BulkLoadException` with an honest report), and the
   caller's autoCommit is restored. Refusals never fail the transfer — upsert
-  keys, caller-supplied TargetWriters, non-native connections, and BINARY
-  columns (text protocols can't carry them) fall back to batched INSERT with
-  a `BULK_LOAD_UNAVAILABLE` warning. Benchmarked in `BulkLoadIT` (100k rows,
+  keys, caller-supplied TargetWriters, non-native connections, BINARY
+  columns (text protocols can't carry them), and — for the positional DuckDB
+  Appender — APPEND-mode tables whose physical column set/order differs from
+  the transfer schema (extra/default/generated columns) fall back to batched
+  INSERT with a `BULK_LOAD_UNAVAILABLE` warning. Benchmarked in `BulkLoadIT` (100k rows,
   live engines) with identical row/checksum outcomes to the batched path.
 - HEL-172: optional framework adapters. `pkgrovekit-quarkus` (CDI producer over
   Agroal-managed datasources; explicit MP-Config datasource-to-dialect mapping,

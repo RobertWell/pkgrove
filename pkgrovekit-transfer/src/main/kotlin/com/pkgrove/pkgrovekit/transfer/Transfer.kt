@@ -188,7 +188,7 @@ object Transfer {
                         "upsert keys are set (bulk paths cannot upsert)"
                     loader == null ->
                         "${targetDialect.name} has no bulk loader"
-                    else -> when (val s = loader.supports(bulkTarget, effective)) {
+                    else -> when (val s = loader.supports(bulkTarget, targetTable, effective)) {
                         is com.pkgrove.pkgrovekit.jdbc.BulkSupport.Yes -> null
                         is com.pkgrove.pkgrovekit.jdbc.BulkSupport.No -> s.reason
                     }

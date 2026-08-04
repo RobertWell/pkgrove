@@ -33,8 +33,13 @@ interface BulkLoader {
     /** Short engine name for warnings/telemetry (e.g. "postgres-copy"). */
     val name: String
 
-    /** Can this loader serve [connection] + [schema]? Typed no-with-reason. */
-    fun supports(connection: Connection, schema: Schema): BulkSupport
+    /** Can this loader serve [connection] + [table] + [schema]? Typed
+     *  no-with-reason. [table] is the ALREADY-ESTABLISHED target (the transfer
+     *  gate runs after table establishment) so positional protocols can verify
+     *  the physical column set/order matches [schema] — an APPEND-mode table
+     *  with extra/default columns or a different order must refuse here rather
+     *  than misalign. */
+    fun supports(connection: Connection, table: String, schema: Schema): BulkSupport
 
     /**
      * Stream [batches] into [table] via the native protocol. [table] and the

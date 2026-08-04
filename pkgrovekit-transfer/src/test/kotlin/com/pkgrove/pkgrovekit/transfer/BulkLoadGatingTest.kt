@@ -130,6 +130,29 @@ class BulkLoadGatingTest {
     }
 
     @Test
+    fun `append into a table with extra default columns falls back instead of misaligning`() {
+        // Physical table has an extra defaulted column and a DIFFERENT order than
+        // the transfer schema — the positional Appender must refuse (shape check)
+        // and the batched INSERT (which names columns) must land the rows.
+        target.createStatement().use { st ->
+            st.execute("""CREATE TABLE shaped (ingested_at TIMESTAMP DEFAULT now(),
+                          id BIGINT, label VARCHAR, price DECIMAL(10,2), ts TIMESTAMP, ok BOOLEAN)""")
+        }
+        val report = Transfer.run(
+            source, "SELECT * FROM src WHERE id < 12", emptyList(),
+            target, DuckDbDialect, "shaped",
+            Transfer.Options(useBulkLoad = true, mode = SqlDialect.TargetMode.APPEND))
+        assertTrue(report.completed)
+        assertEquals(12L, report.rowsAffected)
+        assertTrue(bulkWarning(report).single().message.contains("positional"))
+        JdbcReader.open(target, "SELECT count(*) AS n, count(\"ingested_at\") AS d FROM \"shaped\"").use { s ->
+            val r = s.toList().single()
+            assertEquals(12L, r["n"])
+            assertEquals(12L, r["d"]) { "default column must be populated" }
+        }
+    }
+
+    @Test
     fun `a caller-supplied writer owns the write path so bulk falls back`() {
         val report = Transfer.runToWriter(
             source, "SELECT * FROM src WHERE id < 15", emptyMap(),

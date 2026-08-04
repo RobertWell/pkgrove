@@ -95,9 +95,12 @@ to(Analytics, "trades_copy") { bulkLoad() }
 Same data contract as the batched path (values are bind-adapted by the same
 dialect hook), all-or-nothing regardless of `commitPolicy`, and honest
 fallback: when the fast path can't serve the request — upsert keys set, a
-caller-supplied `TargetWriter` owns the write, a non-native connection, or a
-BINARY column a text protocol can't carry — the transfer silently degrades to
-batched INSERT and records a `BULK_LOAD_UNAVAILABLE` warning in the report.
+caller-supplied `TargetWriter` owns the write, a non-native connection, a
+BINARY column a text protocol can't carry, or (DuckDB) an APPEND-mode table
+whose physical column set/order doesn't positionally match the transfer
+schema (the Appender is positional; extra/default columns need the named
+INSERT) — the transfer silently degrades to batched INSERT and records a
+`BULK_LOAD_UNAVAILABLE` warning in the report.
 A mid-stream failure rolls the whole load back and throws `BulkLoadException`
 with the partial report attached. Benchmarked in
 `integration-tests/.../BulkLoadIT.kt` (100k rows against live engines).

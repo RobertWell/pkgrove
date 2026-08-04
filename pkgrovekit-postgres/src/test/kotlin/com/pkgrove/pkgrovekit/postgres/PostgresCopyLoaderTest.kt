@@ -84,7 +84,7 @@ class PostgresCopyLoaderTest {
         val schema = Schema(listOf(
             Column("id", ValueKind.NUMERIC, "int8", precision = 19),
             Column("payload", ValueKind.BINARY, "bytea")))
-        val s = PostgresCopyLoader.supports(fakeConnection(wrapsPg = true), schema)
+        val s = PostgresCopyLoader.supports(fakeConnection(wrapsPg = true), "t", schema)
         assertTrue(s is BulkSupport.No)
         assertTrue((s as BulkSupport.No).reason.contains("payload"))
     }
@@ -92,7 +92,7 @@ class PostgresCopyLoaderTest {
     @Test
     fun `non-pgjdbc connections are refused and pg connections accepted`() {
         val schema = Schema(listOf(Column("id", ValueKind.NUMERIC, "int8", precision = 19)))
-        assertTrue(PostgresCopyLoader.supports(fakeConnection(false), schema) is BulkSupport.No)
-        assertEquals(BulkSupport.Yes, PostgresCopyLoader.supports(fakeConnection(true), schema))
+        assertTrue(PostgresCopyLoader.supports(fakeConnection(false), "t", schema) is BulkSupport.No)
+        assertEquals(BulkSupport.Yes, PostgresCopyLoader.supports(fakeConnection(true), "t", schema))
     }
 }
