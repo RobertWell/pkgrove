@@ -92,6 +92,7 @@ class Relay private constructor(
         internal var commitPolicy: JdbcBatchWriter.CommitPolicy = JdbcBatchWriter.CommitPolicy.AllOrNothing
         internal var mode: SqlDialect.TargetMode? = null
         internal var useBulkLoad: Boolean = false
+        internal var processor: (() -> BatchProcessor)? = null
 
         /** Rename a source column into the target by NAME (never by position). */
         fun rename(source: String, target: String) { renames += source to target }
@@ -117,6 +118,28 @@ class Relay private constructor(
         /** How the target table is established (CREATE by default; APPEND when
          *  [upsertBy] is used). */
         fun mode(mode: SqlDialect.TargetMode) { this.mode = mode }
+
+        /**
+         * HEL-228: process CONSECUTIVE rows sharing [keyColumns] as one group —
+         * the streaming-safe form of grouped aggregation. Memory is bounded by
+         * [maxGroupRows], which is required (not defaulted) so the budget is a
+         * decision, not an accident; a larger group fails loudly.
+         *
+         * REQUIRES the source query to be ordered by [keyColumns]. If a key
+         * reappears after its group closed, the transfer fails rather than
+         * silently emitting two partial aggregates for one key.
+         */
+        fun groupConsecutiveBy(vararg keyColumns: String, maxGroupRows: Int,
+                               outputSchema: com.pkgrove.pkgrovekit.core.Schema,
+                               summarize: (key: List<Any?>,
+                                           rows: List<com.pkgrove.pkgrovekit.core.Row>)
+                                   -> List<com.pkgrove.pkgrovekit.core.Row>) {
+            val keys = keyColumns.toList()
+            processor = { ConsecutiveGrouper(keys, maxGroupRows, outputSchema, summarize) }
+        }
+
+        /** HEL-228: apply an explicit bounded [BatchProcessor] to the batch stream. */
+        fun processBatches(factory: () -> BatchProcessor) { processor = factory }
 
         /** HEL-161: use the sink dialect's native bulk-ingest path (Postgres
          *  COPY / DuckDB Appender) when available — falls back to batched
@@ -187,6 +210,7 @@ class Relay private constructor(
                 mapping = mapping,
                 upsertKeys = spec.upsertKeys,
                 useBulkLoad = spec.useBulkLoad,
+                processor = spec.processor,
             )
             var flow = src.toFlow()
             transform?.let { flow = flow.transform(it) }

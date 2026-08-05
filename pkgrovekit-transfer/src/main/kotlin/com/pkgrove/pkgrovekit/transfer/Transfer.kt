@@ -54,6 +54,16 @@ object Transfer {
          * path is all-or-nothing regardless of [commitPolicy].
          */
         val useBulkLoad: Boolean = false,
+        /**
+         * HEL-228: an explicit stateful step applied to the ALREADY-mapped,
+         * bind-adapted batch stream just before the write. Deliberately a
+         * separate option from [rowTransform] — a pure row map and a stateful
+         * aggregation have different memory contracts, and hiding the second
+         * inside the first is exactly what this option exists to prevent.
+         * The processor declares its own bound; streaming and cancellation are
+         * preserved (nothing is materialized beyond what it holds).
+         */
+        val processor: (() -> BatchProcessor)? = null,
     )
 
     /**
@@ -145,19 +155,26 @@ object Transfer {
                 plan.sources[plan.targetSchema.indexOf(c.name)]
             }
 
+            // HEL-228: a stateful step may RESHAPE rows (grouping/aggregation), so
+            // the table we establish and the DML we generate must describe what
+            // will actually be WRITTEN — the processor's output schema — not the
+            // source's. Built here, before DDL, for exactly that reason.
+            val processorInstance = options.processor?.invoke()
+            val writeSchema = processorInstance?.outputSchema ?: effective
+
             // 2. establish the target table per mode
-            establishTarget(target, targetDialect, targetTable, effective, options.mode)
+            establishTarget(target, targetDialect, targetTable, writeSchema, options.mode)
 
             // 3. insert or explicit named-key upsert
             val dml = options.upsertKeys?.let { keys ->
-                val missing = keys.filter { !effective.contains(it) }
+                val missing = keys.filter { !writeSchema.contains(it) }
                 require(missing.isEmpty()) {
                     "upsert key columns not present in the target schema: ${missing.joinToString(", ")}"
                 }
-                targetDialect.upsertSql(targetTable, effective, keys)
+                targetDialect.upsertSql(targetTable, writeSchema, keys)
                     ?: throw UnsupportedOperationException(
                         "${targetDialect.name} has no upsert support")
-            } ?: targetDialect.insertSql(targetTable, effective)
+            } ?: targetDialect.insertSql(targetTable, writeSchema)
 
             // 4. stream: map by NAME + bind-adapt each batch, hand to the writer
             val outBatches = stream.batches(options.readBatchSize).map { batch ->
@@ -177,6 +194,11 @@ object Transfer {
                     })
                 })
             }
+            // HEL-228: stateful step sits between mapping and the writer, so it
+            // sees the same bind-adapted rows the writer would have written.
+            val processed = processorInstance?.let {
+                runProcessor(it, outBatches, options.cancelToken)
+            } ?: outBatches
             // HEL-161: opt-in native bulk path — used only when every gate says
             // yes; otherwise fall back to the batched writer with a visible warning.
             if (options.useBulkLoad) {
@@ -188,14 +210,14 @@ object Transfer {
                         "upsert keys are set (bulk paths cannot upsert)"
                     loader == null ->
                         "${targetDialect.name} has no bulk loader"
-                    else -> when (val s = loader.supports(bulkTarget, targetTable, effective)) {
+                    else -> when (val s = loader.supports(bulkTarget, targetTable, writeSchema)) {
                         is com.pkgrove.pkgrovekit.jdbc.BulkSupport.Yes -> null
                         is com.pkgrove.pkgrovekit.jdbc.BulkSupport.No -> s.reason
                     }
                 }
                 if (refusal == null) {
                     val report = loader!!.bulkLoad(
-                        bulkTarget!!, targetTable, effective, outBatches,
+                        bulkTarget!!, targetTable, writeSchema, processed,
                         com.pkgrove.pkgrovekit.jdbc.BulkLoadOptions(
                             cancelToken = options.cancelToken,
                             onProgress = options.onProgress))
@@ -206,7 +228,7 @@ object Transfer {
                     message = "bulk load requested but unavailable ($refusal) — using batched INSERT")
             }
             val report = writer.write(
-                dml, outBatches,
+                dml, processed,
                 JdbcBatchWriter.WriteOptions(commitPolicy = options.commitPolicy,
                                              cancelToken = options.cancelToken,
                                              onProgress = options.onProgress))

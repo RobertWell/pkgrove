@@ -5,6 +5,26 @@ All notable changes to PkgroveKit. Pre-stable: breaking changes may occur in any
 
 ## Unreleased
 
+- HEL-228 (phase 1 of 6): bounded STATEFUL transformations that keep the
+  streaming contract. `BatchProcessor` is an explicit, intention-revealing
+  seam — a stateful step can never masquerade as a pure `rowTransform`,
+  because the two are different options with different memory contracts.
+  `ConsecutiveGrouper` (Relay: `groupConsecutiveBy(...)`) aggregates
+  consecutive rows sharing an ordered key, bounded by a REQUIRED
+  `maxGroupRows` (no default — the budget is a decision), and refuses
+  rather than corrupts: a group over budget throws `GroupTooLargeException`,
+  and a key reappearing after its group closed throws
+  `OutOfOrderGroupException` naming the missing ORDER BY instead of silently
+  emitting two partial aggregates for one key. A processor may declare an
+  `outputSchema`, which then drives table establishment and the INSERT/upsert
+  DML — grouped output reshapes rows, so the target must describe what is
+  actually written. `close()` runs on success, failure and cancellation;
+  laziness and cancellation are preserved (asserted, not assumed).
+  Categories 4-6 from the issue (partitioned keyed aggregation with spill,
+  materialized stages, checkpoint/restart) are deliberately NOT included:
+  they change the streaming guarantee and are sequenced after adopter
+  evidence for these.
+
 - HEL-161: opt-in native bulk-load fast path for transfers. New
   `BulkLoader` capability on `SqlDialect` with two implementations:
   `PostgresCopyLoader` (COPY FROM STDIN CSV via pgjdbc CopyManager) and
