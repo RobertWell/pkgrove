@@ -125,17 +125,26 @@ class Relay private constructor(
          * [maxGroupRows], which is required (not defaulted) so the budget is a
          * decision, not an accident; a larger group fails loudly.
          *
-         * REQUIRES the source query to be ordered by [keyColumns]. If a key
-         * reappears after its group closed, the transfer fails rather than
-         * silently emitting two partial aggregates for one key.
+         * REQUIRES the source query to be ordered by [keyColumns]. HEL-255: the
+         * ordering guard remembers the last [recentKeyMemory] closed keys
+         * (default [ConsecutiveGrouper.DEFAULT_RECENT_KEY_MEMORY] = 10 000), so
+         * a key reappearing within that window fails the transfer instead of
+         * emitting two partial aggregates for one key — and a key reappearing
+         * further back than the window is NOT detected. Widening the window
+         * widens the guard at ~113 bytes per key; see [ConsecutiveGrouper] for
+         * the guarantee in full.
          */
         fun groupConsecutiveBy(vararg keyColumns: String, maxGroupRows: Int,
                                outputSchema: com.pkgrove.pkgrovekit.core.Schema,
+                               recentKeyMemory: Int =
+                                   ConsecutiveGrouper.DEFAULT_RECENT_KEY_MEMORY,
                                summarize: (key: List<Any?>,
                                            rows: List<com.pkgrove.pkgrovekit.core.Row>)
                                    -> List<com.pkgrove.pkgrovekit.core.Row>) {
             val keys = keyColumns.toList()
-            processor = { ConsecutiveGrouper(keys, maxGroupRows, outputSchema, summarize) }
+            processor = {
+                ConsecutiveGrouper(keys, maxGroupRows, outputSchema, recentKeyMemory, summarize)
+            }
         }
 
         /** HEL-228: apply an explicit bounded [BatchProcessor] to the batch stream. */

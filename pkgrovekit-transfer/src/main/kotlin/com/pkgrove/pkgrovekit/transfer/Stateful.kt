@@ -16,7 +16,8 @@ import com.pkgrove.pkgrovekit.core.Schema
  *  1. [Transfer.Options.rowTransform] — row mapping, fully streaming (existing).
  *  2. [BatchProcessor]  — one bounded batch at a time; memory <= batch limit.
  *  3. [ConsecutiveGrouper] — consecutive rows sharing an ordered key form one
- *     group; memory <= the largest group, which the caller bounds explicitly.
+ *     group; memory <= the largest group plus a bounded ordering-guard window,
+ *     both of which the caller bounds explicitly.
  *
  * Categories 4 (partitioned keyed aggregation with spill) and 5 (materialized
  * stages) are deliberately NOT implemented here: they change the streaming
@@ -65,48 +66,107 @@ interface BatchProcessor {
 
 /**
  * Category 3 — ordered grouping. Rows arriving in key order are gathered per
- * key and handed to [summarize] when the key changes; memory is bounded by the
- * largest group, and [maxGroupRows] makes that bound explicit and enforceable
- * instead of an unstated assumption.
+ * key and handed to [summarize] when the key changes; the open group's rows are
+ * the dominant state, and [maxGroupRows] makes that bound explicit and
+ * enforceable instead of an unstated assumption.
  *
  * REQUIRES the source to be ordered by [keyColumns] (add ORDER BY to the source
- * SQL). Out-of-order input is a caller error and is reported as one, never
- * silently merged: a key that reappears after being closed throws
- * [OutOfOrderGroupException] rather than producing a wrong aggregate.
+ * SQL). Out-of-order input is a caller error and is reported as one rather than
+ * silently merged — but the guard that detects it costs memory, so its reach is
+ * bounded and stated here exactly rather than overclaimed.
+ *
+ * THE ORDERING GUARANTEE, EXACTLY (HEL-255): the last [recentKeyMemory] closed
+ * keys are retained. A key that reappears while it is still inside that window
+ * ALWAYS throws [OutOfOrderGroupException]. A key that reappears after more
+ * than [recentKeyMemory] other groups have closed is NOT detected: its rows are
+ * summarized as a second, separate group for the same key, and the caller gets
+ * two partial aggregates with no error. The window catches the interleaving a
+ * missing ORDER BY actually produces; catching an arbitrarily distant
+ * reappearance would require retaining every key ever seen, which is memory
+ * proportional to the dataset. (The original implementation did exactly that —
+ * ~113 bytes per key, 108 MB at 1M groups — while [largestGroupRows] went on
+ * reporting the per-group bound as healthy.)
+ *
+ * Total retained state is therefore <= [maxGroupRows] rows + [recentKeyMemory]
+ * keys, both caller-set, and is INDEPENDENT of the number of groups in the
+ * dataset. [bufferedRows] and [retainedKeys] report the live size of each half,
+ * so the instrumentation cannot show a bound holding while memory grows.
  */
 class ConsecutiveGrouper(
     private val keyColumns: List<String>,
     private val maxGroupRows: Int,
     private val declaredOutput: Schema,
+    /** Ordering-guard window: how many recently closed keys stay detectable.
+     *  See the guarantee above — this is the guard's reach AND its memory. */
+    private val recentKeyMemory: Int = DEFAULT_RECENT_KEY_MEMORY,
     private val summarize: (key: List<Any?>, rows: List<Row>) -> List<Row>,
 ) : BatchProcessor {
+
+    companion object {
+        /**
+         * Default ordering-guard window. 10k keys is roughly 1 MB at the ~113
+         * bytes/key measured in HEL-255 — small enough to be invisible next to
+         * a JDBC fetch buffer, wide enough that any realistic interleaving from
+         * a missing/partial ORDER BY still lands inside it.
+         */
+        const val DEFAULT_RECENT_KEY_MEMORY: Int = 10_000
+    }
 
     init {
         require(keyColumns.isNotEmpty()) { "groupConsecutiveBy needs at least one key column" }
         require(maxGroupRows > 0) { "maxGroupRows must be positive (it is the memory bound)" }
+        require(recentKeyMemory > 0) {
+            "recentKeyMemory must be positive — it is both the ordering guard's reach and its " +
+            "memory bound; a zero window would silently accept unordered input"
+        }
     }
 
     // The INPUT-batch limit and the STATE bound are different things: a grouper
     // streams rows out of whatever batch it is given into per-key state, so it
-    // accepts any batch size. Its memory bound is maxGroupRows, enforced per
-    // group below. (Conflating the two rejected perfectly valid transfers.)
+    // accepts any batch size. Its memory bound is maxGroupRows + recentKeyMemory,
+    // enforced below. (Conflating the two rejected perfectly valid transfers.)
     override val maxRows: Int get() = Int.MAX_VALUE
 
     override val outputSchema: Schema get() = declaredOutput
 
     private var currentKey: List<Any?>? = null
     private val buffer = ArrayList<Row>()
-    private val closedKeys = HashSet<List<Any?>>()
+
+    // The ordering guard's whole state. LinkedHashMap with removeEldestEntry is
+    // the JDK's own bounded-map primitive — a LinkedHashSet cannot evict, and a
+    // hand-rolled ring buffer + HashSet would just re-implement this. Insertion
+    // order (not access order) is deliberate: on correctly ordered input a
+    // retained key is never looked up again, so "oldest closed group" is the
+    // only sensible eviction victim, and FIFO keeps eviction O(1) and
+    // predictable. Values are unused — this is a set that forgets.
+    private val recentKeys = object : LinkedHashMap<List<Any?>, Unit>(16, 0.75f, false) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<List<Any?>, Unit>): Boolean =
+            size > recentKeyMemory
+    }
+
     private var emitted = 0L
     private var groupsSeen = 0L
     private var largestGroup = 0
 
     /** Rows emitted so far — for the caller's own metrics/logging. */
     val emittedRows: Long get() = emitted
-    /** Groups completed so far. */
+    /** Groups completed so far. NOT a state size — completed groups are emitted
+     *  and released; see [bufferedRows]/[retainedKeys] for what is still held. */
     val groups: Long get() = groupsSeen
-    /** Largest group observed — compare against [maxGroupRows] to see headroom. */
+    /**
+     * High-water mark of the OPEN-group buffer — compare against [maxGroupRows]
+     * to see headroom. This is a per-group figure only: it says nothing about
+     * total retention, which is [bufferedRows] + [retainedKeys] (HEL-255 —
+     * this metric once read "1" while 108 MB of keys was retained).
+     */
     val largestGroupRows: Int get() = largestGroup
+    /** Rows retained RIGHT NOW for the open group (<= [maxGroupRows]). */
+    val bufferedRows: Int get() = buffer.size
+    /** Closed keys retained RIGHT NOW by the ordering guard (<= [recentKeyMemory]).
+     *  Together with [bufferedRows] this is the grouper's entire live state. */
+    val retainedKeys: Int get() = recentKeys.size
+    /** The configured ordering-guard window — the bound [retainedKeys] respects. */
+    val recentKeyWindow: Int get() = recentKeyMemory
 
     override fun accept(batch: RowBatch): ProcessOutput {
         val out = ArrayList<Row>()
@@ -115,13 +175,12 @@ class ConsecutiveGrouper(
             if (currentKey == null) {
                 currentKey = key
             } else if (key != currentKey) {
-                out += closeGroup()
-                if (!closedKeys.add(currentKey!!)) { /* unreachable: closeGroup adds */ }
-                if (key in closedKeys) {
+                out += closeGroup()   // this is what registers currentKey as closed
+                if (recentKeys.containsKey(key)) {
                     throw OutOfOrderGroupException(
-                        "key $key reappeared after its group was closed — the source is not " +
-                        "ordered by ${keyColumns.joinToString(", ")}; add an ORDER BY " +
-                        "(groupConsecutiveBy will not silently merge split groups)")
+                        "key $key reappeared within the last $recentKeyMemory closed groups — " +
+                        "the source is not ordered by ${keyColumns.joinToString(", ")}; add an " +
+                        "ORDER BY (groupConsecutiveBy will not silently merge split groups)")
                 }
                 currentKey = key
             }
@@ -150,7 +209,7 @@ class ConsecutiveGrouper(
             }
         }
         buffer.clear()
-        closedKeys += key
+        recentKeys[key] = Unit   // evicts the oldest once the window is full
         groupsSeen++
         emitted += rows.size
         return rows
@@ -158,7 +217,7 @@ class ConsecutiveGrouper(
 
     override fun close() {
         buffer.clear()
-        closedKeys.clear()
+        recentKeys.clear()
     }
 }
 

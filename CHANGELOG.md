@@ -5,6 +5,22 @@ All notable changes to PkgroveKit. Pre-stable: breaking changes may occur in any
 
 ## Unreleased
 
+- HEL-255 (defect, unreleased code): `ConsecutiveGrouper` retained EVERY
+  distinct grouping key for the whole transfer — ~113 bytes/key, 108 MB at
+  1M groups — while `largestGroupRows` went on reporting the per-group
+  bound as healthy, so the instrumentation showed a bound holding while
+  retention grew without limit. The out-of-order guard now keeps only the
+  last `recentKeyMemory` closed keys (new parameter on `ConsecutiveGrouper`
+  and `groupConsecutiveBy`, default 10 000, ~1 MB), so total retained state
+  is `maxGroupRows` rows + `recentKeyMemory` keys and is independent of the
+  number of groups (measured: 108.2 MB -> 1.1 MB at 1M groups). The guard's
+  guarantee narrowed with it and the class doc now states it exactly: a key
+  reappearing WITHIN the window always throws `OutOfOrderGroupException`; a
+  key reappearing further back is NOT detected and yields two aggregates
+  for one key. New `bufferedRows` / `retainedKeys` / `recentKeyWindow`
+  expose the real live state. Source-compatible: existing call sites keep
+  the default window.
+
 - HEL-228 (phase 1 of 6): bounded STATEFUL transformations that keep the
   streaming contract. `BatchProcessor` is an explicit, intention-revealing
   seam — a stateful step can never masquerade as a pure `rowTransform`,
