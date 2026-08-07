@@ -3,7 +3,7 @@
 All notable changes to PkgroveKit. Pre-stable: breaking changes may occur in any
 0.x release and are listed here with migration notes.
 
-## Unreleased
+## 0.5.0 — 2026-08-07
 
 - HEL-256 (defect): "bounded memory by construction" was not enforced on a
   PostgreSQL source. `JdbcReader` set `Statement.fetchSize` and nothing else,
