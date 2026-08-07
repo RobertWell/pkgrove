@@ -109,6 +109,7 @@ handling the typed outcome                commit/rollback choreography, cleanup,
 |---|---|
 | [Getting started](docs/getting-started.md) | dependency setup, modules, first workflow |
 | [Workflow style](docs/workflow-style.md) | conventions, API tiers, fan-out/concurrency |
+| [Transformations](docs/transformations.md) | decision guide: SQL vs row mapping vs batches vs ordered grouping |
 | [Transactions](docs/TRANSACTIONS.md) | outcomes, retries, checkpoints, policies |
 | [Adapters](docs/adapters/) | Oracle, DuckDB, PostgreSQL specifics |
 | [Reference](docs/reference/) | low-level JDBC/JDBI APIs, configuration, errors |

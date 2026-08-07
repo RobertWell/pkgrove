@@ -24,7 +24,9 @@ deliberately, not by default.
 - **Pure transformations**: top-level functions like
   `fun normalizeCustomer(row: Row): Row?`. Deterministic; no resource
   acquisition, no hidden I/O, no global mutation. Unit-test them with a
-  hand-built `Schema` + `Row` — no database required.
+  hand-built `Schema` + `Row` — no database required. When a row map is not
+  enough (batches, grouped calculations), pick the mode deliberately:
+  [transformations.md](transformations.md).
 - **Execution**: `relay.execute(plan)` for one transfer;
   `Workflows.executeStructured(flows, databases, maxConcurrency, policy)` for
   independent fan-out under bounded per-database budgets.

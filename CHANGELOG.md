@@ -70,7 +70,12 @@ All notable changes to PkgroveKit. Pre-stable: breaking changes may occur in any
   Categories 4-6 from the issue (partitioned keyed aggregation with spill,
   materialized stages, checkpoint/restart) are deliberately NOT included:
   they change the streaming guarantee and are sequenced after adopter
-  evidence for these.
+  evidence for these. New `docs/transformations.md` is the decision guide
+  across all five categories — SQL/engine first, then row mapping, bounded
+  batches, ordered grouping — stating each mode's memory contract, what it
+  requires of the source, and how it fails, including the ordering guard's
+  exact (bounded, incomplete) reach and the streaming precondition the
+  memory bound now depends on.
 
 - HEL-161: opt-in native bulk-load fast path for transfers. New
   `BulkLoader` capability on `SqlDialect` with two implementations:
