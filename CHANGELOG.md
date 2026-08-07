@@ -5,6 +5,37 @@ All notable changes to PkgroveKit. Pre-stable: breaking changes may occur in any
 
 ## Unreleased
 
+- HEL-256 (defect): "bounded memory by construction" was not enforced on a
+  PostgreSQL source. `JdbcReader` set `Statement.fetchSize` and nothing else,
+  but pgjdbc opens a server-side cursor only when the connection is out of
+  autocommit — in autocommit it ignores `fetchSize` and materializes the whole
+  result set client-side, silently. The guarantee therefore held only by luck
+  of caller configuration, and a framework-managed `DataSource` (Quarkus/Agroal,
+  Spring/Hikari — the HEL-172 adapters) hands out `autoCommit=true`. Measured on
+  a 195 MiB result set: 214 MiB live-retained heap and 698 ms to first batch,
+  versus 2 MiB and 43 ms once streaming.
+  The requirement is now dialect-driven, not a Postgres special case: new
+  `StreamingContract` is the single place per-dialect streaming preconditions
+  are recorded (Postgres needs autoCommit off; MySQL/MariaDB need the
+  `Integer.MIN_VALUE` fetch-size sentinel; Oracle honours `fetchSize` directly;
+  DuckDB is in-process), declared per adapter via `SqlDialect.streaming` and
+  otherwise detected from the driver's own product name.
+  Enforcement respects HEL-128 ownership, via `ReadOptions.ownership` /
+  `Transfer.Options.sourceConnectionOwnership`: on a `LEASED` connection
+  `autoCommit` is taken over and **restored exactly as found** on success,
+  exception, and cancellation (the same contract `JdbcBatchWriter` already had
+  on the write side, and safe by construction because the take-over happens only
+  when `autoCommit` was already true, i.e. no caller transaction exists); on a
+  `CALLER_OWNED` connection nothing is mutated and a driver that cannot stream
+  produces `StreamingUnavailableException` at open with an actionable message
+  instead of a silent unbounded buffer. A connection already inside a caller
+  transaction is the GOOD case and is never refused. Where source and target
+  share one physical connection the writer's commit would close the cursor, so
+  that case stays buffered and says so through a `not-streaming` `DataWarning`
+  on the report rather than overstating the bound. `RowStream.streaming`
+  reports whether the bound actually holds. Source-compatible: existing call
+  sites get streaming by default.
+
 - HEL-255 (defect, unreleased code): `ConsecutiveGrouper` retained EVERY
   distinct grouping key for the whole transfer — ~113 bytes/key, 108 MB at
   1M groups — while `largestGroupRows` went on reporting the per-group

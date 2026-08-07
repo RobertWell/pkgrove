@@ -79,6 +79,11 @@ handling the typed outcome                commit/rollback choreography, cleanup,
 
 - **Bounded resources**: per-database lease budgets, fetch-size-bounded
   streaming, one read batch in flight; branches never share a connection.
+  The fetch-size bound is *enforced*, not assumed: `fetchSize` alone does not
+  make every driver stream (pgjdbc ignores it outside a transaction and buffers
+  the whole result set), so each read applies its source's declared streaming
+  requirements — and where PkgroveKit may not reconfigure the connection it
+  refuses or warns rather than quietly buffer. See [docs/RESOURCES.md](docs/RESOURCES.md).
 - **Explicit transactions**: atomic / chunked / savepoint policies; partial
   completion is structurally distinct from success, with the exact resume point.
 - **Cancellation**: cooperative tokens propagate to `Statement.cancel`; never

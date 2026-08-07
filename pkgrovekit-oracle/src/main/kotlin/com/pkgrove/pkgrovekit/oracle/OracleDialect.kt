@@ -4,6 +4,7 @@ import com.pkgrove.pkgrovekit.core.Column
 import com.pkgrove.pkgrovekit.core.DataWarning
 import com.pkgrove.pkgrovekit.core.ValueKind
 import com.pkgrove.pkgrovekit.jdbc.SqlDialect
+import com.pkgrove.pkgrovekit.jdbc.StreamingContract
 import com.pkgrove.pkgrovekit.jdbc.ValueReader
 import java.sql.ResultSet
 
@@ -19,6 +20,12 @@ object OracleDialect : SqlDialect {
 
     /** Oracle savepoints are first-class (HEL-126 SavepointPerBatch). */
     override val supportsSavepoints: Boolean = true
+
+    /** HEL-256: ojdbc applies `Statement.fetchSize` directly (it overrides the
+     *  driver's default row-prefetch of 10) and needs no particular transaction
+     *  state — stated explicitly rather than inherited, because "this dialect
+     *  was audited and needs nothing" is the useful fact here. */
+    override val streaming: StreamingContract = StreamingContract.HONOURS_FETCH_SIZE
 
     /** VARCHAR2 byte budget before we fall to CLOB. */
     private const val MAX_VARCHAR2 = 4000

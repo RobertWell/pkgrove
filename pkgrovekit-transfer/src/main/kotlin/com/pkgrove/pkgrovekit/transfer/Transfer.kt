@@ -7,6 +7,7 @@ import com.pkgrove.pkgrovekit.core.OperationReport
 import com.pkgrove.pkgrovekit.core.Row
 import com.pkgrove.pkgrovekit.core.RowBatch
 import com.pkgrove.pkgrovekit.core.Schema
+import com.pkgrove.pkgrovekit.jdbc.ConnectionOwnership
 import com.pkgrove.pkgrovekit.jdbc.JdbcBatchWriter
 import com.pkgrove.pkgrovekit.jdbc.JdbcReader
 import com.pkgrove.pkgrovekit.jdbc.SqlDialect
@@ -17,7 +18,14 @@ import java.sql.Connection
  * SQL-in/data-out bidirectional transfer (HEL-120 capability 4; HEL-119).
  * Source: arbitrary parameterized read SQL. Target: a table established per
  * [SqlDialect.TargetMode], written with the batch writer's commit policies.
- * Bounded memory by construction — one read batch in flight at a time.
+ * Bounded memory by construction — one read batch in flight at a time, and
+ * (HEL-256) the source driver is actively made to stream rather than assumed
+ * to: `fetchSize` alone does not stop pgjdbc buffering a whole result set, so
+ * the read enforces the source's [com.pkgrove.pkgrovekit.jdbc.StreamingContract]
+ * (see [Options.sourceConnectionOwnership]). The one case that cannot be made
+ * to stream — source and target sharing one physical connection, where the
+ * writer's commit closes the cursor — is reported as a [DataWarning] on the
+ * [OperationReport] rather than claimed as bounded.
  *
  * Direction-agnostic: "Oracle → DuckDB" vs "DuckDB → Oracle" is just which
  * connection is source and which dialect is target.
@@ -64,6 +72,19 @@ object Transfer {
          * preserved (nothing is materialized beyond what it holds).
          */
         val processor: (() -> BatchProcessor)? = null,
+        /**
+         * HEL-256: may the read reconfigure the SOURCE connection so its driver
+         * actually streams (pgjdbc ignores fetchSize in autocommit and buffers
+         * everything)? Default [ConnectionOwnership.LEASED] — taken over and
+         * restored, matching what [JdbcBatchWriter] already does to the target
+         * connection. Set [ConnectionOwnership.CALLER_OWNED] when the source is
+         * inside a transaction you own; the read then refuses rather than
+         * silently buffer if the driver cannot stream as handed over.
+         *
+         * Ignored when source and target are the same physical connection —
+         * see [runPositional].
+         */
+        val sourceConnectionOwnership: ConnectionOwnership = ConnectionOwnership.LEASED,
     )
 
     /**
@@ -140,11 +161,24 @@ object Transfer {
                               options: Options, preWarnings: List<DataWarning>,
                               writer: TargetWriter, bulkTarget: Connection? = null): OperationReport {
         val warnings = preWarnings.toMutableList()
+        // HEL-256: a server-side cursor lives INSIDE the read's transaction, so
+        // when the target writer holds this very same connection its commit
+        // would close the cursor mid-stream. That case cannot stream at any
+        // price — the read declares it and warns instead of either breaking at
+        // the first commit or overstating the memory bound. Note the source
+        // dialect is deliberately NOT passed: `targetDialect` describes the
+        // TARGET, and using it to decide the SOURCE's driver behavior would be
+        // wrong on every cross-vendor transfer. The read detects the source
+        // contract from the source connection's own driver.
+        val readOwnership =
+            if (source === target) ConnectionOwnership.SHARED_WITH_WRITER
+            else options.sourceConnectionOwnership
         JdbcReader.open(
             source, sourceSql, sourceParams,
             JdbcReader.ReadOptions(fetchSize = options.fetchSize,
                                    cancelToken = options.cancelToken,
-                                   valueReader = options.sourceValueReader)).use { stream ->
+                                   valueReader = options.sourceValueReader,
+                                   ownership = readOwnership)).use { stream ->
             // 1. resolve the NAMED mapping plan against the discovered source
             //    schema (rejects unknown/duplicate/ambiguous names BEFORE any
             //    write), then adapt the target schema per conversion policy.

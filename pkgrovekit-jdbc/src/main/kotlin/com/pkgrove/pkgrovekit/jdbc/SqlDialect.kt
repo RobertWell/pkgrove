@@ -23,6 +23,19 @@ interface SqlDialect {
     val supportsSavepoints: Boolean get() = false
 
     /**
+     * Capability report (HEL-256): what this dialect's DRIVER needs before it
+     * will actually stream a result set rather than buffer it whole. Declared
+     * here so the read path enforces a per-dialect fact instead of hard-coding
+     * one vendor's quirk — see [StreamingContract] for the audited table.
+     *
+     * Conservative default: the driver is assumed to honour
+     * `Statement.fetchSize` on its own. An adapter whose driver does NOT must
+     * override, because a wrong answer here is a silent unbounded buffer, not
+     * an error.
+     */
+    val streaming: StreamingContract get() = StreamingContract.HONOURS_FETCH_SIZE
+
+    /**
      * The dialect's DDL type for [column], or null when it has no faithful
      * representation (the transfer layer then applies the caller's
      * [ConversionPolicy] — never a silent guess).

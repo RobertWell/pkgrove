@@ -4,6 +4,7 @@ import com.pkgrove.pkgrovekit.core.Column
 import com.pkgrove.pkgrovekit.core.Schema
 import com.pkgrove.pkgrovekit.core.ValueKind
 import com.pkgrove.pkgrovekit.jdbc.SqlDialect
+import com.pkgrove.pkgrovekit.jdbc.StreamingContract
 
 /**
  * PostgreSQL as a first-class relational adapter (HEL-127): source (the
@@ -17,6 +18,11 @@ object PostgresDialect : SqlDialect {
 
     /** Postgres savepoints are first-class. */
     override val supportsSavepoints: Boolean = true
+
+    /** HEL-256: pgjdbc ignores `fetchSize` in autocommit and buffers the whole
+     *  result set. The read path takes autoCommit over (and restores it) on a
+     *  leased connection, and refuses rather than buffer on a caller-owned one. */
+    override val streaming: StreamingContract = StreamingContract.POSTGRES
 
     /** Postgres folds unquoted identifiers to LOWERCASE — the mirror image of
      *  Oracle's rule, same deterministic policy: fold-then-quote so generated

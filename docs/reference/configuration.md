@@ -3,6 +3,9 @@
 | Option | Where | Default | Meaning |
 |---|---|---|---|
 | `fetchSize` | `JdbcReader.ReadOptions` | 1000 | JDBC cursor fetch size (memory bound) |
+| `ownership` | `JdbcReader.ReadOptions` | `LEASED` | may the read reconfigure the connection so the driver streams? `CALLER_OWNED` = never mutate, refuse instead |
+| `dialect` | `JdbcReader.ReadOptions` | auto-detect | source dialect, used only for its streaming contract; detected from the driver when null |
+| `sourceConnectionOwnership` | `Transfer.Options` | `LEASED` | as above, for the transfer's source connection |
 | `queryTimeoutSeconds` | `ReadOptions` | 0 (off) | statement-level timeout |
 | `cancelToken` | read/write/transfer options | none | cooperative cancel + deadline (`CancelToken.withTimeout`) |
 | `commitPolicy` | `JdbcBatchWriter.WriteOptions` | `AllOrNothing` | or `PerChunk(n)` chunked commits with resume info |

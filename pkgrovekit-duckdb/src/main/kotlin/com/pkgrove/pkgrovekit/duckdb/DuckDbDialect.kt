@@ -3,6 +3,7 @@ package com.pkgrove.pkgrovekit.duckdb
 import com.pkgrove.pkgrovekit.core.Column
 import com.pkgrove.pkgrovekit.core.ValueKind
 import com.pkgrove.pkgrovekit.jdbc.SqlDialect
+import com.pkgrove.pkgrovekit.jdbc.StreamingContract
 
 /**
  * DuckDB as a transfer TARGET (and, with the default [com.pkgrove.pkgrovekit.jdbc.ValueReader],
@@ -16,6 +17,10 @@ object DuckDbDialect : SqlDialect {
     /** DuckDB's JDBC driver does not implement java.sql savepoints — the
      *  capability report keeps SavepointPerBatch failing EARLY here. */
     override val supportsSavepoints: Boolean = false
+
+    /** HEL-256: in-process, so there is no client/server boundary to buffer
+     *  across and no transaction precondition for streaming. */
+    override val streaming: StreamingContract = StreamingContract.NOT_APPLICABLE
 
     override fun typeFor(column: Column): String? = when (column.kind) {
         ValueKind.TEXT -> "VARCHAR"

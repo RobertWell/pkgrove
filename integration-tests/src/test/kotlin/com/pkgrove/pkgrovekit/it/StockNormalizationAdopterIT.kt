@@ -503,16 +503,24 @@ class StockNormalizationAdopterIT {
     }
 
     /**
-     * DEFECT PROBE (backpressure). `Transfer.Options.fetchSize` sets
-     * `Statement.fetchSize`, which pgjdbc IGNORES while the connection is in
-     * autoCommit mode — it materializes the entire result set client-side
-     * before the first row is handed back. The library's "bounded memory by
-     * construction — one read batch in flight at a time" contract therefore
-     * depends on a caller-side connection setting it neither performs nor
-     * documents. Measured here rather than asserted from the driver docs.
+     * HEL-256 regression — this was the DEFECT PROBE that found the bug.
+     *
+     * `Transfer.Options.fetchSize` sets `Statement.fetchSize`, which pgjdbc
+     * IGNORES while the connection is in autoCommit mode — it materializes the
+     * entire result set client-side before the first row is handed back. The
+     * probe measured that and showed the library's "bounded memory by
+     * construction — one read batch in flight at a time" contract depending on
+     * a caller-side connection setting it neither performed nor documented.
+     *
+     * `JdbcReader` now performs that setting itself on a connection it leases,
+     * and restores it. So the assertion INVERTS: the read must now be bounded
+     * whichever way the connection arrives, and the gap the probe measured must
+     * be gone. The dedicated heap gate for this lives in [PostgresStreamingIT];
+     * what is kept here is the original probe's own comparison, still measured
+     * on the real adopter's data, now proving the defect is closed.
      */
     @Test @Order(5)
-    fun `backpressure - a Postgres source only streams when the caller disables autoCommit`() {
+    fun `backpressure - a Postgres source streams regardless of the caller's autoCommit`() {
         admin.createStatement().use { st ->
             st.execute("CREATE TABLE wide_payload (id BIGINT PRIMARY KEY, payload TEXT NOT NULL)")
             // 20k rows x 2 KiB = ~40 MiB if the driver buffers the whole result.
@@ -521,7 +529,7 @@ class StockNormalizationAdopterIT {
                 SELECT g, repeat(md5(g::text), 64) FROM generate_series(1, 20000) g""")
         }
 
-        fun read(autoCommit: Boolean): HeapProbe {
+        fun read(autoCommit: Boolean): Long {
             val probe = HeapProbe()
             var firstBatchMs = -1L
             sampledHeap("read autoCommit=$autoCommit", probe) {
@@ -538,20 +546,28 @@ class StockNormalizationAdopterIT {
                             rows += b.size            // batch dropped immediately
                         }
                         assertEquals(20_000L, rows)
+                        assertTrue(stream.streaming,
+                            "the read must stream whether or not the caller disabled autoCommit")
                     }
+                    // Whatever it was handed, it hands back unchanged (HEL-128).
+                    assertEquals(autoCommit, c.autoCommit,
+                        "the connection's autoCommit must be restored exactly as found")
                 }
             }
             println("MEASURE backpressure autoCommit=$autoCommit: " +
                     "peakDeltaMB=${probe.deltaBytes shr 20} timeToFirstBatchMs=$firstBatchMs " +
                     "totalMs=${probe.elapsedMs}")
-            return probe
+            return firstBatchMs
         }
 
-        val streaming = read(autoCommit = false)
-        val buffered = read(autoCommit = true)
-        assertTrue(buffered.deltaBytes > streaming.deltaBytes * 2) {
-            "expected the autoCommit read to retain far more heap; " +
-            "buffered=${buffered.deltaBytes shr 20}MB streaming=${streaming.deltaBytes shr 20}MB"
+        // Pre-fix these differed by ~8x (13ms vs 103ms): the autoCommit read had
+        // to pull all 40 MiB before yielding row 1. Both now open a cursor, so
+        // first-batch latency is a fetch either way and the gap is gone.
+        val alreadyInTransaction = read(autoCommit = false)
+        val takenOver = read(autoCommit = true)
+        assertTrue(takenOver < (alreadyInTransaction + 50) * 4) {
+            "the autoCommit read is still behaving like a buffered read: " +
+            "firstBatch ${takenOver}ms vs ${alreadyInTransaction}ms when already in a transaction"
         }
     }
 }

@@ -65,6 +65,57 @@ close/cancel closes statement + result set and returns the lease. Any future
 async executor must preserve exactly this property (bounded in-flight
 batches), and expose completion vs abandonment distinctly.
 
+### The bound is enforced, not assumed (HEL-256)
+
+All of the above presumes the driver is actually streaming. `Statement.fetchSize`
+is only a HINT, and the drivers that need more than it ignore it **silently** —
+the symptom is heap proportional to the result set, never an error. So every
+read consults its source's `StreamingContract` and acts on it.
+
+`StreamingContract` (in `pkgrovekit-jdbc`) is the single place the per-dialect
+requirements are written down; `SqlDialect.streaming` declares each adapter's,
+and when no dialect is supplied the contract is detected from the driver itself
+via `DatabaseMetaData.getDatabaseProductName`. Product name is the right key
+because the buffering behavior belongs to the **driver**: anything reached
+through pgjdbc reports `PostgreSQL` and buffers like pgjdbc.
+
+| Dialect | Needs to stream | Consequence if unmet |
+|---|---|---|
+| PostgreSQL | `autoCommit = false` (+ `fetchSize > 0`, `TYPE_FORWARD_ONLY`, single statement) | driver buffers the ENTIRE result set client-side |
+| Oracle | nothing — ojdbc applies `fetchSize` directly, overriding row-prefetch (10) | n/a |
+| MySQL / MariaDB | `fetchSize = Integer.MIN_VALUE` on a forward-only read-only statement (or a connection built with `useCursorFetch=true`) | driver buffers the entire result set |
+| DuckDB | nothing — in-process, no client/server boundary | n/a |
+
+A requirement satisfiable on the STATEMENT (MySQL's sentinel) is simply applied:
+the statement is ours. A requirement on the CONNECTION (Postgres' autoCommit)
+is subject to ownership, and this is where HEL-128 binds:
+
+- **`LEASED`** (default) — PkgroveKit borrowed this connection for the read's
+  scope, so it takes `autoCommit` over and **restores it exactly as found** on
+  success, exception, and cancellation. Same contract `JdbcBatchWriter` has
+  always had on the write side. Safe by construction: the take-over happens
+  only when `autoCommit` was already `true`, which means no caller transaction
+  was in flight, so the read transaction — and the rollback that ends it —
+  cannot destroy anything of the caller's.
+- **`CALLER_OWNED`** — a connection whose transaction the caller owns
+  (JTA-enlisted, Spring-bound, `JoinExisting`). Settings are read, never
+  written. If the driver then cannot stream, the read throws
+  `StreamingUnavailableException` at open naming the setting and both fixes,
+  rather than buffering silently. Note this is usually a non-event: such a
+  connection is already out of autocommit, which is exactly what streaming
+  needs — the refusal fires only for the contradictory case.
+- **`SHARED_WITH_WRITER`** — source and target are one physical connection, so
+  the writer's commit would close a server-side cursor mid-stream. Streaming is
+  impossible at any price here, so the read proceeds buffered and emits a
+  `not-streaming` `DataWarning` onto the `OperationReport`. Use separate source
+  and target connections to stream. `Transfer` selects this mode automatically
+  when it sees `source === target`.
+
+Proof, not assertion: `PostgresStreamingIT` reads a 195 MiB result set through a
+connection at its driver default and measures the **live** (post-collection)
+heap mid-scan. Pre-fix that measured 214 MiB retained with 698 ms to first
+batch; after, 2 MiB and 43 ms.
+
 ## DuckDB lifecycle notes (adapter-specific, kept in the adapter)
 
 - **In-memory** (`jdbc:duckdb:`) is per-connection: the connection IS the

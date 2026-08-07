@@ -36,6 +36,13 @@ dependencies {
 }
 
 tasks.withType<Test>().configureEach {
+    // HEL-256: PostgresStreamingIT asserts on RETAINED heap, so the heap ceiling
+    // has to be a property of the test rather than of whoever's machine runs it.
+    // Left unpinned, a large default heap lets dropped batches pile up as
+    // uncollected garbage and a genuinely streaming read measures as if it were
+    // buffering. 512m is Gradle's own default — stated here so it stays true.
+    maxHeapSize = "512m"
+
     // The docker-java shaded inside testcontainers defaults to Docker API v1.32,
     // which modern daemons (min API 1.40) reject outright — every container
     // start then fails with "Could not find a valid Docker environment". Pin a
