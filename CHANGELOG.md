@@ -3,6 +3,23 @@
 All notable changes to PkgroveKit. Pre-stable: breaking changes may occur in any
 0.x release and are listed here with migration notes.
 
+## Unreleased
+
+- HEL-236: optional S3-compatible object-storage scenarios in
+  `pkgrovekit-duckdb` (`com.pkgrove.pkgrovekit.duckdb.s3`, zero new
+  dependencies). `S3Session` configures DuckDB `httpfs` + a `CREATE OR REPLACE
+  SECRET` for the endpoint; `ObjectKey` is a write target that is an object key
+  (`s3://bucket/key`) rather than a table; `S3Publisher` publishes a query
+  result as ONE Parquet/CSV object with atomic-replace semantics
+  (staging-key write → read-back verify → server-side `CopyObject` → delete
+  staging) and a typed `PublishOutcome` — no failure mode can leave a corrupt
+  or partial final object, and staging orphans are always reported, never
+  silent. The replace/delete pair runs over a built-in SigV4 client
+  (`java.net.http`, pinned against AWS's published signing example);
+  substitutable via `S3Publisher.ObjectStoreOps`. Proven against real MinIO in
+  `S3ObjectPublishIT`. First consumer: HEL-264 training-record publication.
+  See `docs/adapters/duckdb.md`.
+
 ## 0.5.0 — 2026-08-07
 
 - HEL-256 (defect): "bounded memory by construction" was not enforced on a
