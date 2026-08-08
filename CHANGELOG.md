@@ -5,6 +5,22 @@ All notable changes to PkgroveKit. Pre-stable: breaking changes may occur in any
 
 ## Unreleased
 
+- HEL-259 (docs): added a researcher-facing **Security Policy**
+  (`SECURITY.md` at the repository root, GitHub-recognized) covering supported
+  versions, private vulnerability reporting via GitHub Private Vulnerability
+  Reporting (no public issue for an unpatched flaw), response/triage
+  expectations, coordinated disclosure, researcher credit, and the maintainer
+  private-report → patched-release → GHSA/CVE workflow with exact Maven
+  coordinate/version mapping (`com.pkgrove:pkgrovekit-*` and legacy
+  `com.pkgrove:rowrelay-*`). The existing internal security-control
+  documentation moved to `docs/security-controls.md` (clearly separated from the
+  external policy) and its owner repository-settings checklist gained the
+  Private-vulnerability-reporting toggle, dependency graph/submission, secret
+  scanning + push protection, notification recipients, and the accurate required
+  `main` checks. No code, scanner, or gate changes — the HEL-124 detection
+  controls are unchanged. References `docs/RELEASING.md` for the security-release
+  cut rather than duplicating it.
+
 - HEL-236: optional S3-compatible object-storage scenarios in
   `pkgrovekit-duckdb` (`com.pkgrove.pkgrovekit.duckdb.s3`, zero new
   dependencies). `S3Session` configures DuckDB `httpfs` + a `CREATE OR REPLACE

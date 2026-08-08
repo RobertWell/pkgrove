@@ -114,12 +114,21 @@ handling the typed outcome                commit/rollback choreography, cleanup,
 | [Adapters](docs/adapters/) | Oracle, DuckDB, PostgreSQL specifics |
 | [Reference](docs/reference/) | low-level JDBC/JDBI APIs, configuration, errors |
 | [Architecture](docs/ARCHITECTURE.md) · [ADRs](docs/adr/) | boundaries and decisions |
-| [Security](docs/SECURITY.md) | CVE gate, SBOM, dependency verification |
+| [Security policy](SECURITY.md) · [security controls](docs/security-controls.md) | reporting a vulnerability · CVE gate, SBOM, dependency verification |
 
 Versioning: pre-stable `0.x`, immutable releases only (MAJOR = breaking API or
 major workflow redesign, MINOR = backward-compatible enhancement, PATCH = fix;
 `0.x` is not a blanket exception). Dev builds carry commit identity
 (`-Pdev` → `0.2.0-dev.<sha>`) and are never published. See `CHANGELOG.md`.
+
+## Security
+
+Found a vulnerability? **Do not open a public issue.** Report it privately via
+GitHub Private Vulnerability Reporting — see the [Security Policy](SECURITY.md)
+for the reporting route, supported versions, response expectations, and the
+coordinated-disclosure / GHSA-CVE workflow. The project's automated supply-chain
+gates (CVE scan, SBOM, dependency verification, CodeQL) are documented in
+[docs/security-controls.md](docs/security-controls.md).
 
 ## License
 

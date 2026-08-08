@@ -1,5 +1,5 @@
 # HEL-124 §8: source-code static analysis (Kotlin/Java) — findings surface in
-# the Security tab; HIGH/CRITICAL alerts are handled via docs/SECURITY.md.
+# the Security tab; HIGH/CRITICAL alerts are handled via docs/security-controls.md.
 name: codeql
 on:
   push:

@@ -1,5 +1,9 @@
 # PkgroveKit security controls (HEL-124)
 
+> **Reporting a vulnerability?** This file documents the project's *internal*
+> automated controls and gates. To report a vulnerability privately, see the
+> researcher-facing [Security Policy](../SECURITY.md) at the repository root.
+
 ## Publication gate — what blocks a publish
 
 The GitHub Packages `publish` job depends on **all** of: the full test check,
@@ -109,13 +113,30 @@ every security run and before every publish.
 
 ## Owner checklist — repository settings (cannot be set from the repo)
 
-These are GitHub *settings*, requiring repo admin in the UI/API:
+These are GitHub *settings*, requiring repo admin in the UI/API. They cannot be
+committed from the repository; the owner must toggle and verify each one, then
+record the evidence (a screenshot or the `gh api` response) against HEL-259.
 
-- [ ] Settings → Advanced Security: enable **Dependabot alerts** and
+- [ ] Settings → Code security → **Private vulnerability reporting: Enable**.
+      This is the intake route published in [`SECURITY.md`](../SECURITY.md); it
+      must be on for the "Report a vulnerability" button to appear on the
+      Security tab. Verify with
+      `gh api repos/RobertWell/pkgrove --jq '.security_and_analysis'`.
+- [ ] Settings → Code security: enable **Dependabot alerts** and
       **Dependabot security updates**.
-- [ ] Enable **automatic dependency submission** for Gradle (or accept the
-      dependency graph from manifests + the in-repo scanning as coverage).
-- [ ] Verify **secret scanning + push protection** are active (public repos:
-      on by default — verify, don't assume).
-- [ ] Branch protection on `main`: mark `dependency-review`, `security /
-      cve-scan`, and `ci / check` as **required status checks**.
+- [ ] Settings → Code security: enable the **dependency graph** and
+      **automatic dependency submission** for Gradle (or accept the dependency
+      graph from manifests + the in-repo scanning as coverage).
+- [ ] Settings → Code security: verify **secret scanning** and **push
+      protection** are active (public repos: on by default — verify, don't
+      assume).
+- [ ] Settings → Code security → Security alerts: confirm the **notification
+      recipients** (repo admins / the maintainer) receive Dependabot and
+      advisory alerts.
+- [ ] Branch protection on `main`: mark these as **required status checks**
+      (job names, `workflow / job`): `ci / check`, `security / cve-scan`,
+      `dependency-review / dependency-review`, and `codeql / analyze`.
+
+Any control that cannot be enabled (e.g. an org plan that gates a feature) must
+be recorded here with the reason and its compensating control — do not leave a
+box silently unchecked.
