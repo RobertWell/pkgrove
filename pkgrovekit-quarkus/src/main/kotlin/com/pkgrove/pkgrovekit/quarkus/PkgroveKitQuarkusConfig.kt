@@ -1,10 +1,8 @@
 package com.pkgrove.pkgrovekit.quarkus
 
-import com.pkgrove.pkgrovekit.duckdb.DuckDbDialect
 import com.pkgrove.pkgrovekit.jdbc.SqlDialect
+import com.pkgrove.pkgrovekit.jdbc.SqlDialectProvider
 import com.pkgrove.pkgrovekit.jdbc.TransactionPolicy
-import com.pkgrove.pkgrovekit.oracle.OracleDialect
-import com.pkgrove.pkgrovekit.postgres.PostgresDialect
 import org.eclipse.microprofile.config.Config
 
 /**
@@ -78,12 +76,14 @@ data class PkgroveKitQuarkusConfig(
         private val KNOWN_ATTRIBUTES =
             setOf("datasource", "dialect", "max-connections", "default-policy")
 
-        private val DIALECTS: Map<String, SqlDialect> = mapOf(
-            "postgres" to PostgresDialect,
-            "oracle" to OracleDialect,
-            "duckdb" to DuckDbDialect,
-            "ansi" to AnsiDialect,
-        )
+        /** Dialects available to configuration = every dialect module ACTUALLY
+         *  on the classpath (discovered via [SqlDialectProvider], HEL-235) plus
+         *  this module's built-in generic [AnsiDialect]. The adapter no longer
+         *  compile-depends on any concrete dialect module: a `quarkus + oracle`
+         *  consumer sees `oracle` and `ansi`, never `postgres`/`duckdb`.
+         *  `ansi` always wins its key (built-in), otherwise providers are used. */
+        internal fun availableDialects(): Map<String, SqlDialect> =
+            SqlDialectProvider.loadAll() + ("ansi" to AnsiDialect)
 
         /** Only parameterless policies can be named in flat configuration —
          *  `Chunked` needs `rowsPerCommit` and belongs in code. */
@@ -131,8 +131,9 @@ data class PkgroveKitQuarkusConfig(
                 keys += key
             }
 
+            val dialects = availableDialects()
             val databases = keys.mapNotNull { key ->
-                parseDatabase(config, key, problems)
+                parseDatabase(config, key, dialects, problems)
             }
 
             if (problems.isNotEmpty()) throw InvalidConfigException(problems)
@@ -142,6 +143,7 @@ data class PkgroveKitQuarkusConfig(
         private fun parseDatabase(
             config: Config,
             key: String,
+            dialects: Map<String, SqlDialect>,
             problems: MutableList<String>,
         ): DatabaseConfig? {
             val base = "$DATABASES_PREFIX$key"
@@ -152,14 +154,14 @@ data class PkgroveKitQuarkusConfig(
             var dialectName = ""
             if (dialectRaw == null) {
                 problems += "$base.dialect is required " +
-                    "(one of: ${DIALECTS.keys.sorted().joinToString(", ")})"
+                    "(one of: ${dialects.keys.sorted().joinToString(", ")})"
                 ok = false
             } else {
                 dialectName = dialectRaw.trim().lowercase()
-                dialect = DIALECTS[dialectName]
+                dialect = dialects[dialectName]
                 if (dialect == null) {
                     problems += "$base.dialect: unknown dialect '$dialectRaw' " +
-                        "(one of: ${DIALECTS.keys.sorted().joinToString(", ")})"
+                        "(available on this classpath: ${dialects.keys.sorted().joinToString(", ")})"
                     ok = false
                 }
             }

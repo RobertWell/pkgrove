@@ -1,0 +1,56 @@
+# PkgroveKit allowed internal dependency graph (HEL-235) — MACHINE-READABLE.
+#
+# This file is the single source of truth for which pkgrovekit module may depend
+# on which other pkgrovekit module, and in what Gradle scope. The root build's
+# `assertModuleHierarchy` task READS this file and FAILS the build on any
+# divergence (undeclared edge, wrong scope, cycle, adapter->adapter dep, POM
+# divergence). Edit this file to change the allowed graph — never work around it.
+#
+# Format (one edge per line):
+#     <module> -> <dependency-module> (<scope>)
+# scope is `api` or `implementation`:
+#   - api            : the dependency's TYPES appear in <module>'s PUBLIC API
+#                      (they become `compile`-scoped deps in the published POM).
+#   - implementation : used internally only; never on <module>'s public API.
+# A module with NO outgoing line depends on NO other pkgrovekit module.
+# Any pkgrovekit->pkgrovekit edge NOT listed here is FORBIDDEN.
+#
+# Principle (HEL-235): "users pay only for the capability they explicitly
+# select." The graph is a forest of small, single-purpose capabilities:
+#
+#   data-access spine          coordination (opt-in)        frameworks (opt-in)
+#   ─────────────────          ─────────────────────        ───────────────────
+#   core                       coordination-api             (each -> transfer)
+#    └ jdbc                      ├ jta -> narayana            spring-boot-starter
+#       ├ transfer               └ saga                       quarkus
+#       ├ oracle
+#       ├ duckdb               dialects are discovered by the framework adapters
+#       ├ postgres             at RUNTIME via SqlDialectProvider (ServiceLoader),
+#       └ jdbi (-> transfer)   so an adapter needs NO compile edge to a dialect.
+
+# ── data-access spine ────────────────────────────────────────────────────────
+# core: zero pkgrovekit deps (Kotlin stdlib only).
+pkgrovekit-jdbc -> pkgrovekit-core (api)
+pkgrovekit-transfer -> pkgrovekit-jdbc (api)
+pkgrovekit-oracle -> pkgrovekit-jdbc (api)
+pkgrovekit-duckdb -> pkgrovekit-jdbc (api)
+pkgrovekit-postgres -> pkgrovekit-jdbc (api)
+pkgrovekit-jdbi -> pkgrovekit-jdbc (api)
+# jdbi's JdbiTransfer facade takes a transfer public type (Transfer.Options), so
+# the transfer edge is api. A read-only JDBI consumer (JdbiReader/JdbiBatchWriter
+# only, e.g. AuditPatchX) may exclude pkgrovekit-transfer with no loss.
+pkgrovekit-jdbi -> pkgrovekit-transfer (api)
+
+# ── coordination layer (strictly opt-in; never a dep of the spine) ───────────
+# coordination-api: zero pkgrovekit deps (inert plans/validation, JDK only).
+pkgrovekit-jta -> pkgrovekit-coordination-api (api)
+pkgrovekit-saga -> pkgrovekit-coordination-api (api)
+pkgrovekit-narayana -> pkgrovekit-jta (api)
+
+# ── framework adapters (strictly opt-in) ─────────────────────────────────────
+# Each adapter depends ONLY on transfer (it produces a Relay). Dialect modules
+# are resolved at runtime via ServiceLoader, so there is deliberately NO
+# adapter->dialect and NO adapter->adapter edge. spring !-> quarkus and
+# quarkus !-> spring (no edge here means the check forbids it).
+pkgrovekit-quarkus -> pkgrovekit-transfer (api)
+pkgrovekit-spring-boot-starter -> pkgrovekit-transfer (api)

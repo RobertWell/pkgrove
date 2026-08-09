@@ -51,6 +51,41 @@ verification-metadata:
       - gradle/verification-metadata.xml
     expire_in: 90 days
 
+# HEL-235: architecture enforcement. `assertModuleHierarchy` fails the build on
+# any module-boundary violation (undeclared/mis-scoped edge, cycle,
+# adapter->adapter, framework/jdbi/jta/driver/test leak, POM divergence, BOM
+# gap) against the machine-readable gradle/allowed-dependencies.txt. It also
+# rides every module's `check`, so the enforced build above already runs it —
+# this job surfaces it as a fast standalone gate AND proves the boundary from
+# the CONSUMER side: publish to mavenLocal, then resolve the 8 standalone
+# consumer fixtures and assert required-present / forbidden-absent per scenario.
+module-hierarchy:
+  stage: verify
+  image: maven:3.9-eclipse-temurin-21
+  needs: []
+  variables:
+    GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle-home"
+    GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx1g"
+  cache:
+    key: pkgrovekit-gradle
+    paths:
+      - .gradle-home/caches
+      - .gradle-home/wrapper
+  script:
+    # 1) declared + resolved boundary enforcement (standalone, fast)
+    - ./gradlew --no-daemon assertModuleHierarchy
+    # 2) publish this build to mavenLocal so the fixtures resolve real POMs
+    - ./gradlew --no-daemon publishToMavenLocal
+        -x :integration-tests:test -x :integration-tests-quarkus:test
+    # 3) resolve every consumer fixture against mavenLocal + assert boundaries
+    - ./gradlew --no-daemon -p consumer-fixtures verifyAllFixtures
+  artifacts:
+    name: consumer-fixture-classpaths
+    when: always
+    paths:
+      - consumer-fixtures/*/build/runtime-classpath.txt
+    expire_in: 30 days
+
 # HEL-123: publish the immutable release to THIS project's Maven package
 # registry, so LAN CI consumers (AuditPatchX) resolve PkgroveKit as a normal
 # registry dependency — PAT-free (public project => anonymous reads; the

@@ -6,15 +6,19 @@
 // REAL framework (Boot autoconfigure + Spring tx) over a REAL pool (Hikari)
 // and a REAL database (DuckDB) — no mocks, no containers.
 dependencies {
+    // HEL-235: the starter compile-depends ONLY on transfer (it produces a
+    // Relay). Concrete dialects are discovered at runtime via
+    // SqlDialectProvider (ServiceLoader) from the dialect modules the consumer
+    // actually added — a `spring + postgres` app never carries oracle/duckdb.
+    // DuckDB is test-only here: the autoconfigure tests run the real framework
+    // over a real DuckDB and resolve the `duckdb` id via ServiceLoader.
     api(project(":pkgrovekit-transfer"))
-    api(project(":pkgrovekit-postgres"))
-    api(project(":pkgrovekit-oracle"))
-    api(project(":pkgrovekit-duckdb"))
 
     compileOnly(libs.spring.boot.autoconfigure)
     compileOnly(libs.spring.jdbc)
     compileOnly(libs.spring.context)
 
+    testImplementation(project(":pkgrovekit-duckdb"))
     testImplementation(libs.spring.boot.starter.jdbc)
     testImplementation(libs.spring.boot.test)
     testImplementation(libs.spring.test)

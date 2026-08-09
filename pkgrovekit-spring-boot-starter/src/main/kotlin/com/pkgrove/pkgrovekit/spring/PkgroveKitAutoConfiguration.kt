@@ -1,9 +1,7 @@
 package com.pkgrove.pkgrovekit.spring
 
-import com.pkgrove.pkgrovekit.duckdb.DuckDbDialect
 import com.pkgrove.pkgrovekit.jdbc.SqlDialect
-import com.pkgrove.pkgrovekit.oracle.OracleDialect
-import com.pkgrove.pkgrovekit.postgres.PostgresDialect
+import com.pkgrove.pkgrovekit.jdbc.SqlDialectProvider
 import com.pkgrove.pkgrovekit.transfer.Relay
 import org.springframework.beans.factory.ListableBeanFactory
 import org.springframework.boot.autoconfigure.AutoConfiguration
@@ -60,9 +58,10 @@ class PkgroveKitAutoConfiguration {
                     "pkgrovekit.databases.<key>.dialect entry (or set pkgrovekit.enabled=false)")
         }
         val candidates = beanFactory.getBeanNamesForType(DataSource::class.java).sorted()
+        val dialects = availableDialects()
         return Relay.build {
             for ((key, spec) in specs) {
-                val dialect = resolveDialect(key, spec.dialect)
+                val dialect = resolveDialect(key, spec.dialect, dialects)
                 validateDefaultPolicy(key, spec.defaultPolicy)
                 val dataSource = resolveDataSource(key, spec.datasourceBean, candidates, beanFactory)
                 database(SpringDatabaseKey(key), dataSource, dialect,
@@ -91,29 +90,30 @@ class PkgroveKitAutoConfiguration {
     }
 
     companion object {
-        /** Dialect ids → the published dialect singletons. PkgroveKit has no
-         *  generic/ANSI dialect; the accepted set is exactly the dialect
-         *  modules this starter api-exposes. */
-        private val DIALECTS: Map<String, SqlDialect> = mapOf(
-            "duckdb" to DuckDbDialect,
-            "oracle" to OracleDialect,
-            "postgres" to PostgresDialect,
-        )
+        /** Dialect ids → the published dialect singletons, discovered at runtime
+         *  via [SqlDialectProvider] (ServiceLoader) from whatever dialect modules
+         *  the consumer actually added (HEL-235). The starter no longer
+         *  compile-depends on any concrete dialect module, so a `spring +
+         *  postgres` app never carries oracle/duckdb. PkgroveKit has no
+         *  generic/ANSI dialect here — an unknown id fails startup, never a
+         *  silent guess. */
+        private fun availableDialects(): Map<String, SqlDialect> =
+            SqlDialectProvider.loadAll()
 
         /** Lower-cased [com.pkgrove.pkgrovekit.jdbc.TransactionPolicy] member
          *  names — the only values `default-policy` may carry. */
         private val POLICY_NAMES =
             setOf("atomic", "autocommit", "chunked", "joinexisting", "savepointperbatch")
 
-        private fun resolveDialect(key: String, id: String?): SqlDialect {
-            val known = DIALECTS.keys.sorted().joinToString(", ")
+        private fun resolveDialect(key: String, id: String?, dialects: Map<String, SqlDialect>): SqlDialect {
+            val known = dialects.keys.sorted().joinToString(", ").ifEmpty { "<none — add a pkgrovekit dialect module>" }
             if (id.isNullOrBlank()) {
                 throw PkgroveKitConfigurationException(
-                    "pkgrovekit.databases.$key.dialect is required (known dialects: $known)")
+                    "pkgrovekit.databases.$key.dialect is required (available on this classpath: $known)")
             }
-            return DIALECTS[id.trim().lowercase()] ?: throw PkgroveKitConfigurationException(
+            return dialects[id.trim().lowercase()] ?: throw PkgroveKitConfigurationException(
                 "pkgrovekit.databases.$key.dialect=$id is not a known dialect " +
-                    "(known dialects: $known)")
+                    "(available on this classpath: $known)")
         }
 
         private fun validateDefaultPolicy(key: String, policy: String?) {

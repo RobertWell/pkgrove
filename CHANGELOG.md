@@ -5,6 +5,31 @@ All notable changes to PkgroveKit. Pre-stable: breaking changes may occur in any
 
 ## Unreleased
 
+- HEL-235: **explicit, acyclic module hierarchy with minimal transitive deps**,
+  enforced in CI. The allowed pkgrovekit→pkgrovekit graph (with required Gradle
+  scope) is now a machine-readable map at `gradle/allowed-dependencies.txt`,
+  enforced by a new `assertModuleHierarchy` task that rides `check` and fails on
+  an undeclared/mis-scoped edge, a cycle, an adapter→adapter dependency, a
+  framework leaking into core/jdbc/transfer, jdbi on a jdbc-only classpath,
+  JTA/Narayana on a standard module, a driver leaking transitively, a test-only
+  dep on a published runtime classpath, a published-POM boundary divergence, or a
+  BOM gap. **Framework adapters are now decoupled from concrete dialects:** a new
+  `SqlDialectProvider` service-loader SPI (in `pkgrovekit-jdbc`, contributed by
+  each dialect module) lets `pkgrovekit-spring-boot-starter` and
+  `pkgrovekit-quarkus` depend **only** on `pkgrovekit-transfer` and resolve
+  dialects at runtime — so a "Spring + Postgres" (or "Quarkus + Oracle") consumer
+  no longer transitively carries the other dialect modules. Adds a new
+  **`pkgrovekit-bom`** (`java-platform`, zero runtime deps) so consumers omit
+  per-module versions; there is deliberately no `pkgrovekit-all` aggregate. Eight
+  standalone consumer fixtures (`consumer-fixtures/`) prove each scenario's
+  boundary against `mavenLocal`, wired into CI (`module-hierarchy` job). Docs:
+  README reworked to a scenario-first "choose your use case" guide,
+  `docs/scenarios.md` with the 8 dependency recipes, and
+  `docs/adr/0003-module-hierarchy.md`. Build-internal only — **no version bump**;
+  the boundary changes take effect on the next release and preserve every type
+  existing 0.5.0 consumers import (jdbi still `api`-exposes transfer for the
+  `JdbiTransfer` facade; read-only jdbi consumers may exclude transfer).
+
 - HEL-224: native same-database **server-side copy** (`INSERT … SELECT`
   push-down). When a transfer's source and target are the SAME physical
   connection, `Transfer.Options.useServerSideCopy = true` (or `serverSideCopy()`

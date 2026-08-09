@@ -7,6 +7,9 @@ plugins {
 rootProject.name = "pkgrovekit"
 
 include(
+    // HEL-235: dependency-constraint platform (adds no runtime deps; NOT an
+    // aggregate). Lets consumers omit per-module versions.
+    "pkgrovekit-bom",
     "pkgrovekit-core",
     "pkgrovekit-jdbc",
     "pkgrovekit-jdbi",

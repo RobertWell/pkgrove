@@ -3,10 +3,80 @@
 **Move rows between databases with intent-describing application code — PkgroveKit
 owns the connections, statements, batching, transactions, and honest outcomes.**
 
-- **Status:** pre-stable (`0.2.0`). APIs may change before `1.0.0`; every
+- **Status:** pre-stable (`0.5.0`). APIs may change before `1.0.0`; every
   published version is an **immutable release** — no `-SNAPSHOT`.
 - **Requirements:** Java 21+, Kotlin 1.9+ (consumers may be pure Java).
 - **Framework-neutral:** no Quarkus/Spring/JPA/REST dependencies in any artifact.
+- **Pay for what you select:** a hierarchy of small, single-purpose modules —
+  add the capability you need and you get its transitive modules and nothing
+  else (enforced in CI — HEL-235).
+
+## Choose your use case
+
+Add the module(s) for your scenario. Versions come from the `pkgrovekit-bom`
+platform, so you declare them once and omit per-module versions. Full recipes
+(exact deps, transitive present, notably absent, consumer-owned drivers) are in
+**[docs/scenarios.md](docs/scenarios.md)** — each is backed by an executable
+consumer fixture that CI asserts.
+
+| I want to… | Add | You also get | You do NOT get |
+|---|---|---|---|
+| Do low-level dynamic JDBC | `pkgrovekit-jdbc` | core | transfer, jdbi, dialects, frameworks |
+| Speak a specific dialect | `pkgrovekit-{oracle\|duckdb\|postgres}` | core, jdbc | the other dialects, transfer, frameworks |
+| Run DB→DB transfers | `pkgrovekit-transfer` (+ a dialect) | core, jdbc, coroutines | jdbi, coordination, frameworks |
+| Use JDBI handles | `pkgrovekit-jdbi` | core, jdbc, transfer, jdbi3 | dialects, coordination, frameworks |
+| Wire it into **Spring Boot** | `pkgrovekit-spring-boot-starter` (+ a dialect) | core, jdbc, transfer | oracle/duckdb, **quarkus**, coordination |
+| Wire it into **Quarkus** | `pkgrovekit-quarkus` (+ a dialect) | core, jdbc, transfer | postgres/duckdb, **spring**, coordination |
+| Commit atomically across 2 XA DBs | `pkgrovekit-narayana` | coordination-api, jta | the whole data-access spine, saga |
+| Coordinate without distributed ACID | `pkgrovekit-saga` | coordination-api | jta, narayana, the data-access spine |
+
+**Recommended combinations:** `spring-boot-starter` + `postgres`; `quarkus` +
+`oracle`; `oracle` + `duckdb` for cross-engine copies; `jdbi` alone for
+JDBI-native apps. Drivers are **always consumer-controlled** — add the exact
+JDBC driver your deployment needs (every adapter keeps its driver `compileOnly`).
+
+## Four kinds of module
+
+- **Default (the one obvious path):** `core` → `jdbc` → `transfer` + a dialect
+  (`oracle`/`duckdb`/`postgres`). This is what most consumers use.
+- **Advanced / low-level:** `jdbc` directly, or `jdbi` for JDBI-native code.
+- **Framework adapters (opt-in):** `spring-boot-starter`, `quarkus`. Each
+  depends only on `transfer` and discovers dialects at runtime via
+  `SqlDialectProvider` — the framework stays `compileOnly` and never leaks onto
+  a standard module. `spring ↛ quarkus` and `quarkus ↛ spring`.
+- **Coordination (opt-in, orthogonal):** `coordination-api` → `jta` →
+  `narayana` (distributed ACID), or `saga` (compensation). Strictly opt-in —
+  JTA/Narayana/XA are **absent** from every standard module's runtime classpath
+  (CI-enforced).
+
+## The module hierarchy
+
+```text
+data-access spine                coordination (opt-in)      frameworks (opt-in)
+─────────────────                ─────────────────────      ───────────────────
+core                             coordination-api           spring-boot-starter ─┐
+ └─ jdbc                          ├─ jta ─ narayana          quarkus ─────────────┤
+     ├─ transfer                  └─ saga                                         │
+     ├─ oracle                                              each depends only on ─┘
+     ├─ duckdb                    dialects are discovered    transfer; dialects are
+     ├─ postgres                  at RUNTIME by the          resolved via ServiceLoader
+     └─ jdbi (─ transfer)         framework adapters
+```
+
+The allowed edges live in a machine-readable map
+([`gradle/allowed-dependencies.txt`](gradle/allowed-dependencies.txt)) and are
+enforced by `./gradlew assertModuleHierarchy` (see
+[docs/adr/0003-module-hierarchy.md](docs/adr/0003-module-hierarchy.md)).
+
+## Tutorials
+
+| | |
+|---|---|
+| [Getting started](docs/getting-started.md) | dependency setup, modules, first workflow |
+| [Dependency recipes](docs/scenarios.md) | the 8 scenarios above, in full |
+| [Workflow style](docs/workflow-style.md) | conventions, API tiers, fan-out/concurrency |
+| [Transformations](docs/transformations.md) | SQL vs row mapping vs batches vs ordered grouping |
+| [Transactions](docs/TRANSACTIONS.md) | outcomes, retries, checkpoints, policies |
 
 ## The PkgroveKit coding style
 
@@ -93,22 +163,27 @@ handling the typed outcome                commit/rollback choreography, cleanup,
 - **Nothing lossy is silent**: conversions warn or reject; unrepresentable
   types are named, unsafe identifiers refused (and never echoed).
 
-## Learn more
+## Artifact reference (detailed)
+
+The scenario guide above is the fast path. This section is the exhaustive,
+artifact-level reference.
 
 - **Framework adapters (optional):** [docs/framework-adapters.md](docs/framework-adapters.md) —
   Quarkus (CDI/Agroal) and Spring Boot (auto-configuration/HikariCP) integration
   over framework-owned pools; `@Transactional`-bound `JoinExisting` for Spring.
+  Each adapter depends only on `transfer` and discovers dialects at runtime.
 - **Cross-database coordination (optional):** [docs/coordination.md](docs/coordination.md) —
   when a transfer genuinely must be atomic across two XA-capable databases
   (`pkgrovekit-coordination-api` + `pkgrovekit-jta` + `pkgrovekit-narayana`),
   and when it must NOT (saga / staging-and-publish). Standard modules never
-  receive JTA/Narayana — CI enforces it (`assertCoordinationIsolation`).
+  receive JTA/Narayana — CI enforces it (`assertModuleHierarchy`,
+  `assertCoordinationIsolation`).
 
 
 | | |
 |---|---|
-| [Getting started](docs/getting-started.md) | dependency setup, modules, first workflow |
-| [Workflow style](docs/workflow-style.md) | conventions, API tiers, fan-out/concurrency |
+| [Dependency recipes](docs/scenarios.md) | the 8 scenarios in full: exact deps, present, absent, drivers |
+| [Module hierarchy ADR](docs/adr/0003-module-hierarchy.md) · [allowed graph](gradle/allowed-dependencies.txt) | the enforced boundary + BOM design (HEL-235) |
 | [Transformations](docs/transformations.md) | decision guide: SQL vs row mapping vs batches vs ordered grouping |
 | [Transactions](docs/TRANSACTIONS.md) | outcomes, retries, checkpoints, policies |
 | [Adapters](docs/adapters/) | Oracle, DuckDB, PostgreSQL specifics |

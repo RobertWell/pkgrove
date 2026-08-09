@@ -5,13 +5,19 @@
 // PURE logic only (config parsing / dialect resolution / blocking-boundary
 // heuristics); the real-framework proof lives in integration-tests-quarkus.
 dependencies {
+    // HEL-235: the adapter compile-depends ONLY on transfer (it produces a
+    // Relay). Concrete dialects are discovered at runtime via
+    // SqlDialectProvider (ServiceLoader) from whatever dialect modules the
+    // consumer actually added — so a `quarkus + oracle` consumer never carries
+    // postgres/duckdb. The dialect modules are test-only here (the config tests
+    // assert the real dialect singletons resolve by id via ServiceLoader).
     api(project(":pkgrovekit-transfer"))
-    api(project(":pkgrovekit-postgres"))
-    api(project(":pkgrovekit-oracle"))
-    api(project(":pkgrovekit-duckdb"))
     compileOnly(libs.cdi.api)
     compileOnly(libs.mp.config.api)
     compileOnly(libs.quarkus.agroal)
+    testImplementation(project(":pkgrovekit-postgres"))
+    testImplementation(project(":pkgrovekit-oracle"))
+    testImplementation(project(":pkgrovekit-duckdb"))
     testImplementation(libs.junit.jupiter)
     // compileOnly does NOT reach the test classpath — the config-parsing tests
     // implement a tiny in-memory org.eclipse.microprofile.config.Config fake.
