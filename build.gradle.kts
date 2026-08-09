@@ -584,6 +584,19 @@ configure(subprojects.filter { it.name in mutationThresholds.keys }) {
         avoidCallsTo.set(setOf("kotlin.jvm.internal"))   // Kotlin intrinsics = junk mutants
         mutationThreshold.set(mutationThresholds.getValue(name))
     }
+    // HEL-234: PitestTask is a JavaExec that forks the GRADLE JVM, not the
+    // build toolchain — on a JDK-17 host the minion cannot load our JVM-21
+    // bytecode and PIT reports 0% coverage / "Ran 0 tests" instead of failing
+    // loudly (observed live 2026-08-09). Pin the launcher to the same 21
+    // toolchain the code is compiled with so the gate measures the suite, not
+    // whichever JVM launched Gradle.
+    tasks.withType<info.solidsoft.gradle.pitest.PitestTask>().configureEach {
+        javaLauncher.set(
+            extensions.getByType<JavaToolchainService>().launcherFor {
+                languageVersion.set(JavaLanguageVersion.of(21))
+            },
+        )
+    }
     // HEL-124 flow: a cheap task that resolves the PIT tool classpath so
     // dependency locking (--write-locks) and the GitLab-generated verification
     // metadata cover it without running a full mutation analysis.
