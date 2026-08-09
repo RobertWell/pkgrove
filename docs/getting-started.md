@@ -27,10 +27,12 @@ repositories {
     maven("https://maven.pkg.github.com/RobertWell/pkgrove")
 }
 dependencies {
-    // ≥0.3.0 publishes under the Maven-Central-verified namespace com.pkgrove;
-    // 0.2.0 and earlier remain at com.pkgrove.pkgrovekit in the same registries.
-    implementation("com.pkgrove:pkgrovekit-transfer:0.3.0")
-    implementation("com.pkgrove:pkgrovekit-duckdb:0.3.0")   // your adapters
+    // Current published version: 0.5.0 (Maven Central, com.pkgrove namespace).
+    // Or use the BOM: platform("com.pkgrove:pkgrovekit-bom:<version>") and omit
+    // per-module versions. (Historical note: ≥0.3.0 publishes under com.pkgrove;
+    // 0.2.0 and earlier remain at com.pkgrove.pkgrovekit in the same registries.)
+    implementation("com.pkgrove:pkgrovekit-transfer:0.5.0")
+    implementation("com.pkgrove:pkgrovekit-duckdb:0.5.0")   // your adapters
 }
 ```
 
@@ -40,7 +42,7 @@ Maven:
 <dependency>
     <groupId>com.pkgrove</groupId>
     <artifactId>pkgrovekit-transfer</artifactId>
-    <version>0.3.0</version>
+    <version>0.5.0</version>
 </dependency>
 ```
 

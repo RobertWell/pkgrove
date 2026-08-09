@@ -35,32 +35,37 @@ built on top of it — status, sequencing, the reuse pattern, and onboarding.
 | **AuditPatchX/backend** | **ADOPTED** (HEL-120 / 162 / 238) | `pkgrovekit-jdbi`, `pkgrovekit-oracle`, `pkgrovekit-core` | In production. `backend/pom.xml` declares `com.pkgrove:pkgrovekit-jdbi` + `:pkgrovekit-oracle` at `${pkgrovekit.version}` = **0.4.0** (pom lines 25, 161–169); source imports `JdbiReader`, `OracleDialect`, `OracleValueReader`, `core.{Row,Choice,fold}` in `ComparePlanner.kt` and `DatabaseService.kt`. Read/compare/planning delegate to PkgroveKit; the write path is a documented app-shape boundary (`docs/hel-162-write-path-pkgrovekit-audit.md`). Parity gate 141/0/3 against live Oracle. **Action: bump 0.4.0→0.5.0** to stay current (mechanical). |
 | **hello-stock/backend** | **CANDIDATE** (HEL-190) | `pkgrovekit-jdbi`, `pkgrovekit-postgres` | Not yet integrated (no `com.pkgrove` refs in `backend/pom.xml`). Uses JDBI3 + `quarkus-jdbc-postgresql` (pom lines 221, 266, 277–288) with hand-rolled batch/upsert/retry across 10+ `org.mystock.repository.*RepositoryImpl` files (`StockHistRealRepositoryImpl`, `TransactionRepositoryImpl`, `BasicStockFeatureRepositoryImpl`, …). Entry point: `JdbiBatchWriter` inside the existing `useHandle` scope + `PostgresDialect.upsertSql/insertSql` (**batch-write methods only**). **Highest-risk integration** — prod daily-history/order pipeline; roll out behind `Legacy*` impls with a parity gate. |
 | **hello-stock/AdvancedFeatures** | **CANDIDATE** (HEL-190) | `pkgrovekit-jdbi`, `pkgrovekit-postgres` | Near-duplicate `org.mystock.repository` tree of the backend (`StockHistRealRepositoryImpl`, `StockHistNormalizedRepositoryImpl`, `impl/StockDataNormalizedRepositoryImpl`, …) — md5-divergent copies where the same bugs get fixed twice. Same entry point and modules as the backend, **separate commit**. Adopting here is where the *duplicated-LOC-removed* metric is actually earned. |
-| **QuerySkiff/backend-jvm** | **CANDIDATE / spike** (HEL-191) — **partially blocked** | `pkgrovekit-jdbc`, `pkgrovekit-duckdb` | Not yet integrated. Plain JDBC today: `DuckDbEngine.newConnection` calls `DriverManager.getConnection("jdbc:duckdb:")` and hand-manages statements/streaming (`backend-jvm/src/main/kotlin/com/queryskiff/engine/DuckDbEngine.kt`); Trino path is a separate engine (`TrinoEngine.kt`). Adoptable **now** at 0.5.0: `JdbcReader` + `DuckDbDialect` for the result/read path. **Blocked until next release:** the DuckDB S3/`httpfs` convenience layer QuerySkiff most wants (`S3Session`/`ObjectKey`/`S3Publisher`, HEL-236) is in **CHANGELOG "Unreleased"**, not in 0.5.0 — QuerySkiff reads MinIO Parquet over `s3://`, so the full-fidelity path waits on that cut. Trino stays vendor-JDBC. Caution: do not churn mid-soak (HEL-131). |
+| **QuerySkiff/backend-jvm** | **NO-GO** (HEL-191 verdict, 2026-08-09) | — | The timeboxed spike measured PkgroveKit `Transfer` vs engine-side `CREATE TABLE AS SELECT` for virtual-dataset promotion: **CTAS is ~543× faster than default Transfer and ~7× faster than the DuckDB-appender bulk path**, because QuerySkiff's promotion target reads the *same* MinIO Parquet as the source (DuckDB `read_parquet`, Trino Hive external table) — row transfer through the JVM solves a problem QuerySkiff does not have. Verdict doc: `QuerySkiff/docs/hel-191-pkgrovekit-spike-verdict.md`. **Do not build `pkgrovekit-trino`** (fails both bars: slower than CTAS, no credible second consumer). QuerySkiff stays engine-side; revisit only if a genuine cross-engine move (not same-storage materialization) appears. |
 | **FinControl/backend** | CANDIDATE (weak) | — | Hibernate ORM Panache owns the row mapping; only `Import.kt` (~473 ln) is JDBC-ish. Forcing PkgroveKit under Panache adds a second row model for **no dedup win**. Not now. |
 | **hello-sre-cred-portal** | CANDIDATE (weak) | — | 1 SQL file, sqlite-jdbc + Agroal. Dependency cost > value. Not now. |
 
 ## Sequencing
 
 1. **Keep AuditPatchX green and current** — the proof-of-reuse anchor. Bump the
-   pinned coordinate 0.4.0→0.5.0 (mechanical; parity gate re-runs).
-2. **QuerySkiff read-path spike (HEL-191)** — smallest *second* materially
-   different adopter: DuckDB engine, streaming reads, a non-Oracle dialect.
-   Land the `JdbcReader`/`DuckDbDialect` result path now; defer the S3
-   convenience layer until HEL-236 ships in a release. This exercises the
-   library against DuckDB + streaming, which AuditPatchX (Oracle read/compare)
-   does not.
-3. **hello-stock backend + AdvancedFeatures (HEL-190)** — the batch/PostgreSQL
-   adopter and the largest duplicated-LOC win. Do the backend first behind
+   pinned coordinate 0.4.0→0.5.0 (mechanical; parity gate re-runs). Depth grew
+   on 2026-08-09: the compare source read now **streams** through
+   `JdbiReader.read`/`JdbiRowStream` (HEL-238), exercising the streaming API in
+   production code, not just tests.
+2. **hello-stock backend + AdvancedFeatures (HEL-190)** — the second materially
+   different adopter (PostgreSQL batch upsert vs AuditPatchX's Oracle
+   read/compare) and the largest duplicated-LOC win. Do the backend first behind
    `Legacy*` impls + a golden-day/conflict-branch/identifier parity gate, then
    apply the identical change to AdvancedFeatures as a separate commit to kill
    the copy-divergence.
+3. ~~QuerySkiff~~ — **retired from the roadmap** by the HEL-191 NO-GO
+   (2026-08-09): promotion stays engine-side CTAS; no read-path adoption is
+   directed without a consumer pull (adding the library to a system whose
+   preferred architecture is engine-side SQL would be adoption for its own
+   sake). The training-record publisher (hello-stock `ML_TRAIN/publication`,
+   HEL-264) instead became the first **`pkgrovekit-storage-s3`** consumer —
+   a third materially different usage (object storage, atomic single-PUT).
 4. **Re-evaluate the weak candidates** only if their JDBC surface grows a real
    bulk path (FinControl import/export, cred-portal). Not before.
 
-This ordering deliberately front-loads **two materially different** production
-consumers beyond AuditPatchX's Oracle read/compare use case — QuerySkiff
-(DuckDB + streaming reads) and hello-stock (PostgreSQL batch upsert) — which is
-the HEL-239 acceptance target.
+The **two materially different consumers** acceptance now reads: AuditPatchX
+(Oracle read/compare/streaming, ADOPTED) + hello-stock (PostgreSQL batch
+upsert, HEL-190 in flight) — with HEL-264's storage-s3 publisher as a third
+axis (object storage) once the storage modules ship in a release.
 
 ## The reusable adoption pattern (golden path)
 
