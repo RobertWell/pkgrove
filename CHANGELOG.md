@@ -5,6 +5,22 @@ All notable changes to PkgroveKit. Pre-stable: breaking changes may occur in any
 
 ## Unreleased
 
+- HEL-224: native same-database **server-side copy** (`INSERT … SELECT`
+  push-down). When a transfer's source and target are the SAME physical
+  connection, `Transfer.Options.useServerSideCopy = true` (or `serverSideCopy()`
+  on the `Relay` sink DSL) emits one server-side `INSERT INTO dst (cols) SELECT
+  cols FROM (<sourceSql>) …` instead of round-tripping every row through the
+  client — no CLOB/BLOB values cross the process, no read-side stringification.
+  `SqlDialect` gains `supportsServerSideCopy` (opt-in, default false) and a
+  dialect-quoted `serverSideCopySql(...)` builder; `postgres`, `oracle`, and
+  `duckdb` opt in. The path falls back to the existing row-streaming writer with
+  a visible `SERVER_SIDE_COPY_UNAVAILABLE` warning whenever it cannot be
+  expressed as a pure column-select copy (different databases, a dialect without
+  server-side copy, a `rowTransform`/`processor`, `upsertKeys`, `useBulkLoad`, or
+  a constant-column mapping). Scope is `INSERT … SELECT` only — correlated
+  UPDATE-by-key is deferred per the HEL-224 audit. This is the mode AuditPatchX's
+  compare-apply path can delegate to for same-database moves.
+
 - HEL-259 (docs): added a researcher-facing **Security Policy**
   (`SECURITY.md` at the repository root, GitHub-recognized) covering supported
   versions, private vulnerability reporting via GitHub Private Vulnerability

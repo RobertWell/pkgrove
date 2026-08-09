@@ -99,6 +99,50 @@ class SqlDialectDefaultsTest {
                      dialect.insertSql("t", schema))
     }
 
+    // --- HEL-224 server-side copy (INSERT … SELECT) ---------------------------
+
+    /** A dialect that opts into server-side copy; uses the inherited default
+     *  [SqlDialect.serverSideCopySql] body. */
+    private val copyDialect = object : SqlDialect {
+        override val name = "copy"
+        override val supportsServerSideCopy = true
+        override fun typeFor(column: Column): String? = "T_${column.kind}"
+    }
+
+    @Test
+    fun `server-side copy is opt-in and off by default`() {
+        assertFalse(dialect.supportsServerSideCopy, "server-side copy must be opt-in")
+        assertNull(dialect.serverSideCopySql("t", listOf("a"), listOf("a"), "SELECT 1"),
+                   "a dialect without server-side copy returns no SQL")
+    }
+
+    @Test
+    fun `serverSideCopySql wraps the source as a quoted inline view`() {
+        assertEquals(
+            "INSERT INTO \"dst\" (\"id\", \"name\") " +
+            "SELECT \"src_id\", \"src_name\" FROM (SELECT * FROM t WHERE x = ?) \"pkgrove_src\"",
+            copyDialect.serverSideCopySql(
+                "dst", listOf("id", "name"), listOf("src_id", "src_name"),
+                "SELECT * FROM t WHERE x = ?"))
+    }
+
+    @Test
+    fun `serverSideCopySql appends a predicate when given`() {
+        val sql = copyDialect.serverSideCopySql(
+            "dst", listOf("a"), listOf("a"), "SELECT a FROM t", "\"a\" > 0")
+        assertTrue(sql!!.endsWith("FROM (SELECT a FROM t) \"pkgrove_src\" WHERE \"a\" > 0"), sql)
+    }
+
+    @Test
+    fun `serverSideCopySql rejects mismatched or empty column lists`() {
+        assertThrows<IllegalArgumentException> {
+            copyDialect.serverSideCopySql("dst", listOf("a", "b"), listOf("a"), "SELECT a FROM t")
+        }
+        assertThrows<IllegalArgumentException> {
+            copyDialect.serverSideCopySql("dst", emptyList(), emptyList(), "SELECT 1")
+        }
+    }
+
     @Test
     fun `unsupportedTypeMessage carries full column context`() {
         val m = dialect.unsupportedTypeMessage(

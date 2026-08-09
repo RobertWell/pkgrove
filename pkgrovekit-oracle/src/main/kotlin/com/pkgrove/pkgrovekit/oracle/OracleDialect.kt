@@ -67,6 +67,11 @@ object OracleDialect : SqlDialect {
      *  objects created without quotes (the overwhelmingly common case). */
     override fun identifierCase(name: String): String = name.uppercase()
 
+    /** HEL-224: Oracle executes INSERT … SELECT server-side; a same-database
+     *  transfer copies CLOB / TIMESTAMP WITH LOCAL TIME ZONE columns entirely
+     *  inside the server, so no value is stringified on the client round-trip. */
+    override val supportsServerSideCopy: Boolean = true
+
     /** MERGE-based upsert. Binds one `?` per schema column via the dual
      *  subquery, in schema order — identical bind shape to insertSql. */
     override fun upsertSql(table: String, schema: com.pkgrove.pkgrovekit.core.Schema,

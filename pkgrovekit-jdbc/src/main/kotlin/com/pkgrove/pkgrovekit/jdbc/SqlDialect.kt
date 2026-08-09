@@ -121,6 +121,57 @@ interface SqlDialect {
     fun bulkLoader(): BulkLoader? = null
 
     /**
+     * HEL-224: whether this dialect can perform a NATIVE server-side copy
+     * (INSERT … SELECT) when source and target share one connection/database,
+     * so a same-database transfer never round-trips rows through the client.
+     * Conservative default false; a dialect whose [serverSideCopySql] emits
+     * valid SQL for its engine opts in. Correlated UPDATE-by-key is out of
+     * scope for this first cut (see the HEL-224 audit) — INSERT … SELECT only.
+     */
+    val supportsServerSideCopy: Boolean get() = false
+
+    /**
+     * HEL-224: build the server-side copy statement that reads [selectSql] (the
+     * transfer's source query) and writes it straight into [table] without
+     * pulling rows into the client:
+     *
+     * ```
+     * INSERT INTO <table> (<targetColumns>)
+     * SELECT <sourceColumns> FROM ( <selectSql> ) <alias> [WHERE <predicate>]
+     * ```
+     *
+     * [targetColumns] and [sourceColumns] are paired positionally (target `i`
+     * receives source `i`); both are quoted through [quoteIdent] so identifier
+     * case/quoting is dialect-correct. [selectSql] is wrapped as an inline view
+     * so its own `?` placeholders survive for the caller to bind positionally
+     * and its result columns are addressable by name. [predicate], when
+     * non-null, is appended verbatim — callers pass only dialect-safe,
+     * non-user-supplied text (already-quoted identifiers / bound placeholders).
+     *
+     * Returns null when [supportsServerSideCopy] is false, so the transfer
+     * layer falls back to client-side streaming.
+     */
+    fun serverSideCopySql(table: String, targetColumns: List<String>,
+                          sourceColumns: List<String>, selectSql: String,
+                          predicate: String? = null): String? {
+        if (!supportsServerSideCopy) return null
+        require(targetColumns.size == sourceColumns.size) {
+            "server-side copy needs exactly one source column per target column " +
+            "(${targetColumns.size} target vs ${sourceColumns.size} source)"
+        }
+        require(targetColumns.isNotEmpty()) { "server-side copy needs at least one column" }
+        val dst = targetColumns.joinToString(", ") { quoteIdent(it, "column") }
+        val src = sourceColumns.joinToString(", ") { quoteIdent(it, "column") }
+        val where = predicate?.let { " WHERE $it" } ?: ""
+        return "INSERT INTO ${quoteIdent(table, "table")} ($dst) " +
+               "SELECT $src FROM ($selectSql) ${serverSideCopyAlias()}$where"
+    }
+
+    /** Inline-view alias used by [serverSideCopySql]; quoted per this dialect
+     *  so it is safe regardless of case-folding rules. */
+    fun serverSideCopyAlias(): String = quoteIdent("pkgrove_src", "alias")
+
+    /**
      * Apply [policy] to columns this dialect cannot represent. Returns the
      * effective schema plus warnings; REJECT throws naming the first bad
      * column. STRINGIFY re-types to a text column; SKIP drops the column.

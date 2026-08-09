@@ -92,6 +92,7 @@ class Relay private constructor(
         internal var commitPolicy: JdbcBatchWriter.CommitPolicy = JdbcBatchWriter.CommitPolicy.AllOrNothing
         internal var mode: SqlDialect.TargetMode? = null
         internal var useBulkLoad: Boolean = false
+        internal var useServerSideCopy: Boolean = false
         internal var processor: (() -> BatchProcessor)? = null
 
         /** Rename a source column into the target by NAME (never by position). */
@@ -155,6 +156,15 @@ class Relay private constructor(
          *  INSERT with a warning otherwise. All-or-nothing; incompatible with
          *  [upsertBy] (the request falls back, it never fails). */
         fun bulkLoad() { useBulkLoad = true }
+
+        /** HEL-224: when source and sink are the SAME database, push the copy
+         *  down to a native server-side INSERT … SELECT instead of streaming
+         *  rows through the client. Falls back to streaming with a warning when
+         *  the transfer cannot be expressed as a pure column-select copy (a
+         *  transform/aggregation, an upsert, a cross-database move, or a dialect
+         *  without server-side copy). This is the mode AuditPatchX's
+         *  compare-apply path delegates to for same-database moves. */
+        fun serverSideCopy() { useServerSideCopy = true }
     }
 
     /** Raised when a plan DEFINITION is structurally incomplete — at definition
@@ -219,6 +229,7 @@ class Relay private constructor(
                 mapping = mapping,
                 upsertKeys = spec.upsertKeys,
                 useBulkLoad = spec.useBulkLoad,
+                useServerSideCopy = spec.useServerSideCopy,
                 processor = spec.processor,
             )
             var flow = src.toFlow()

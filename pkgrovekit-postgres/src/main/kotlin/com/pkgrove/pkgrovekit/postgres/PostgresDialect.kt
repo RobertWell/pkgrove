@@ -29,6 +29,10 @@ object PostgresDialect : SqlDialect {
      *  SQL matches objects created without quotes. */
     override fun identifierCase(name: String): String = name.lowercase()
 
+    /** HEL-224: Postgres executes INSERT … SELECT server-side; same-database
+     *  transfers push down through the shared connection instead of streaming. */
+    override val supportsServerSideCopy: Boolean = true
+
     override fun typeFor(column: Column): String? = when (column.kind) {
         ValueKind.TEXT -> {
             val p = column.precision

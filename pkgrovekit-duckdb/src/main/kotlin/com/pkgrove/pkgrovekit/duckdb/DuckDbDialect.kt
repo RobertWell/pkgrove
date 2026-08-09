@@ -97,6 +97,10 @@ object DuckDbDialect : SqlDialect {
     /** HEL-161: native Appender fast path (opt-in via Transfer.Options.useBulkLoad). */
     override fun bulkLoader(): com.pkgrove.pkgrovekit.jdbc.BulkLoader = DuckDbAppenderLoader
 
+    /** HEL-224: DuckDB executes INSERT … SELECT server-side; same-database
+     *  transfers push down through the shared connection instead of streaming. */
+    override val supportsServerSideCopy: Boolean = true
+
     /** DuckDB's JDBC driver refuses several java.time binds; java.sql works for
      *  most. TIME is the exception: java.sql.Time is SECOND-precision and gets
      *  local-timezone-shifted, so a LocalTime bound through it loses its fraction

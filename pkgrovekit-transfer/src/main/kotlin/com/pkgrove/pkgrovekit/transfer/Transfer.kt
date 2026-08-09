@@ -85,6 +85,22 @@ object Transfer {
          * see [runPositional].
          */
         val sourceConnectionOwnership: ConnectionOwnership = ConnectionOwnership.LEASED,
+        /**
+         * HEL-224: when source and target are the SAME physical connection
+         * (same database), push the copy down to a native server-side
+         * INSERT … SELECT instead of round-tripping every row through the
+         * client. Opt-in — the row-streaming path is still the default and the
+         * only path across different databases.
+         *
+         * Falls back to streaming with a visible [DataWarning] whenever the
+         * push-down cannot faithfully express the transfer: source and target
+         * are different connections, the dialect declares no server-side copy
+         * ([SqlDialect.supportsServerSideCopy]), a [rowTransform] or [processor]
+         * must run client-side, [upsertKeys] are set (scope is INSERT … SELECT
+         * only, per the HEL-224 audit), [useBulkLoad] is also requested, or the
+         * mapping injects constant columns that have no source expression.
+         */
+        val useServerSideCopy: Boolean = false,
     )
 
     /**
@@ -170,6 +186,21 @@ object Transfer {
         // TARGET, and using it to decide the SOURCE's driver behavior would be
         // wrong on every cross-vendor transfer. The read detects the source
         // contract from the source connection's own driver.
+        // HEL-224: same-database server-side copy fast path. Eligible only when
+        // every gate says the transfer is a pure column-select copy over one
+        // connection; otherwise it falls through to the streaming path below,
+        // leaving a visible warning so the choice is never silent.
+        if (options.useServerSideCopy) {
+            when (val refusal = serverSideCopyRefusal(source, target, targetDialect, options)) {
+                null -> runServerSideCopy(source, sourceSql, sourceParams, target,
+                                          targetDialect, targetTable, options, warnings)
+                    ?.let { return it }   // null = constant mapping, warned + falls through
+                else -> warnings += DataWarning(
+                    code = "SERVER_SIDE_COPY_UNAVAILABLE",
+                    message = "server-side copy requested but unavailable ($refusal) — " +
+                              "using client-side streaming")
+            }
+        }
         val readOwnership =
             if (source === target) ConnectionOwnership.SHARED_WITH_WRITER
             else options.sourceConnectionOwnership
@@ -268,6 +299,102 @@ object Transfer {
                                              onProgress = options.onProgress))
             return report.copy(warnings = warnings + stream.warnings + report.warnings)
         }
+    }
+
+    /**
+     * HEL-224: the cheap, connection-independent gates for the server-side copy
+     * path. Returns a human-readable reason to fall back to streaming, or null
+     * when the push-down is worth attempting (the mapping's constant-column gate
+     * is resolved later, in [runServerSideCopy], once the schema is known).
+     */
+    private fun serverSideCopyRefusal(source: Connection, target: Connection,
+                                      dialect: SqlDialect, options: Options): String? = when {
+        source !== target -> "source and target are different connections/databases"
+        !dialect.supportsServerSideCopy -> "${dialect.name} has no server-side copy"
+        options.rowTransform != null -> "a row transform must run client-side"
+        options.processor != null -> "a stateful processor must run client-side"
+        options.upsertKeys != null -> "upsert keys are set (scope is INSERT … SELECT only)"
+        options.useBulkLoad -> "bulk load is a client-side ingest path"
+        else -> null
+    }
+
+    /**
+     * HEL-224: run the transfer as one native INSERT … SELECT on the shared
+     * connection. Returns the typed [OperationReport], or null when the mapping
+     * injects a constant column (no source expression to push down) — in which
+     * case a warning is appended and the caller falls back to streaming.
+     *
+     * The source query executes only for METADATA here: the reader is opened to
+     * read its schema and is never iterated, so no rows cross the client. It is
+     * closed before the copy runs so its cursor cannot collide with the
+     * INSERT … SELECT on the same connection. The copy re-runs the query
+     * entirely server-side.
+     */
+    private fun runServerSideCopy(source: Connection, sourceSql: String,
+                                  sourceParams: List<Any?>, target: Connection,
+                                  dialect: SqlDialect, targetTable: String,
+                                  options: Options,
+                                  warnings: MutableList<DataWarning>): OperationReport? {
+        val start = System.nanoTime()
+        lateinit var effective: Schema
+        var sourceCols: List<String>? = null
+        var readWarnings: List<DataWarning> = emptyList()
+        JdbcReader.open(
+            source, sourceSql, sourceParams,
+            JdbcReader.ReadOptions(fetchSize = 1, cancelToken = options.cancelToken,
+                                   valueReader = options.sourceValueReader,
+                                   ownership = ConnectionOwnership.SHARED_WITH_WRITER)).use { stream ->
+            val plan = options.mapping.resolve(stream.schema)
+            effective = dialect.adaptSchema(plan.targetSchema, options.conversionPolicy) { warnings += it }
+            val kept = effective.columns.map { c ->
+                plan.sources[plan.targetSchema.indexOf(c.name)]
+            }
+            // A constant target column has no column to SELECT from the source —
+            // it cannot be pushed into INSERT … SELECT. Fall back rather than
+            // silently drop it.
+            if (kept.none { it is Mapping.Source.Constant }) {
+                sourceCols = kept.map { stream.schema[(it as Mapping.Source.FromColumn).index].name }
+            }
+            readWarnings = stream.warnings
+        }
+        val srcCols = sourceCols ?: run {
+            warnings += DataWarning(
+                code = "SERVER_SIDE_COPY_UNAVAILABLE",
+                message = "server-side copy requested but the mapping adds constant columns " +
+                          "with no source expression — using client-side streaming")
+            return null
+        }
+        val copySql = dialect.serverSideCopySql(
+            targetTable, effective.columns.map { it.name }, srcCols, sourceSql) ?: run {
+            warnings += DataWarning(
+                code = "SERVER_SIDE_COPY_UNAVAILABLE",
+                message = "${dialect.name} produced no server-side copy SQL — using client-side streaming")
+            return null
+        }
+
+        // Establish the target from the discovered write schema, then run the
+        // copy as a single atomic server-side statement.
+        establishTarget(target, dialect, targetTable, effective, options.mode)
+        val previousAutoCommit = target.autoCommit
+        val rows: Long = try {
+            target.autoCommit = false
+            val n = target.prepareStatement(copySql).use { st ->
+                sourceParams.forEachIndexed { i, p -> st.setObject(i + 1, p) }
+                options.cancelToken.throwIfCancelled()
+                st.executeUpdate().toLong()
+            }
+            target.commit()
+            n
+        } catch (e: Exception) {
+            runCatching { target.rollback() }
+            throw e
+        } finally {
+            runCatching { target.autoCommit = previousAutoCommit }
+        }
+        return OperationReport(
+            rowsAffected = rows, batches = 1,
+            elapsedMillis = (System.nanoTime() - start) / 1_000_000,
+            completed = true, warnings = warnings + readWarnings)
     }
 
     private fun establishTarget(target: Connection, dialect: SqlDialect,
