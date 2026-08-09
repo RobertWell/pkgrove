@@ -122,10 +122,15 @@ class TransferSoakIT {
             while (System.nanoTime() < deadline || iteration < MIN_ITERATIONS) {
                 iteration++
                 dbs.withConnection(Pg) { pgc ->
+                    // CREATE_OR_REPLACE emits `CREATE OR REPLACE TABLE` (DuckDB
+                    // syntax) which Postgres rejects — first live soak run proved
+                    // it. Drop + CREATE keeps the same per-iteration semantics on
+                    // a dialect that has no single-statement replace.
+                    pgc.createStatement().use { it.execute("DROP TABLE IF EXISTS soak_sink") }
                     Transfer.run(
                         duck, "SELECT id, name FROM big", emptyMap<String, Any?>(),
                         pgc, PostgresDialect, "soak_sink",
-                        Transfer.Options(mode = SqlDialect.TargetMode.CREATE_OR_REPLACE, readBatchSize = 5_000),
+                        Transfer.Options(mode = SqlDialect.TargetMode.CREATE, readBatchSize = 5_000),
                     )
                 }
                 // correctness every lap — a soak that silently truncates proves nothing
