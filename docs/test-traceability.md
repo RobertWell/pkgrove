@@ -37,9 +37,24 @@ Local commands:
 
 CI (`.github/workflows/ci.yml`): the `check` job enforces every gate above and
 uploads `**/build/reports/jacoco/**` as artifacts; `integration-postgres` is a
-**blocking** PR check; `integration-oracle` stays informational until the
-self-hosted runner exists (hard-gating a known-flaky hosted job would fake the
-assurance this file exists to keep honest).
+**blocking** PR check. The **required, SHA-tied Oracle gate** is the GitLab
+`integration-oracle` job on the LAN self-hosted privileged runner
+(`.gitlab-ci.yml`, every push/MR, no allow_failure); the GitHub hosted-runner
+`integration-oracle` job stays informational only because that *runner* is
+flaky — the gate itself is not.
+
+## Owner-mandated gates (HEL-234, 2026-08-09)
+
+| Gate | Threshold (FAILS below) | Where |
+|---|---|---|
+| Changed-code coverage | 80% of the coverable lines a change touched | `jacocoDiffCoverageCheck` — GitHub `check` (PR/push step), GitLab `diff-coverage` (merge-blocking) |
+| Mutation score (PIT) | jdbc 60 / transfer 60 / coordination-api 70 / jta 70 % killed | `./gradlew mutationTest` — GitLab `mutation` (scheduled, threshold hard-fails) |
+| Live-Oracle integration | any test failure | GitLab `integration-oracle` (LAN runner, required per SHA) |
+| Soak leak/boundedness | lease/session/thread leak deltas, 256 MB post-GC heap ceiling, heap growth trend | `TransferSoakIT` (**S**) — GitLab `stress-soak` (scheduled, 12 min; trend CSV retained 365 days) |
+
+Evidence + artifact locations: `docs/release-evidence.md`;
+`scripts/gen-release-evidence.sh` ties SHA → test counts → coverage → gates in
+both CIs.
 
 ## HEL-128 — connection-pool ownership + resource lifecycle (release-blocking)
 

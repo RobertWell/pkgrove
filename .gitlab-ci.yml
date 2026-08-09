@@ -37,18 +37,23 @@ verification-metadata:
   script:
     # 1) union-append over the SUPERSET of every enforcing Gradle invocation
     #    (check + gate + SBOM + CodeQL graphs; integration-tests excluded — its
-    #    heavy testcontainer runtime is verified leniently and never published)
+    #    heavy testcontainer runtime is verified leniently and never published.
+    #    resolvePitestClasspath pulls the PIT tool classpath into the metadata
+    #    without running a full mutation analysis — HEL-234)
     - ./gradlew --no-daemon --write-verification-metadata sha256
-        clean build publishToMavenLocal cyclonedxBom -x :integration-tests:test
+        clean build publishToMavenLocal cyclonedxBom resolvePitestClasspath -x :integration-tests:test
     # 2) prove the enforced build passes IN THIS ENVIRONMENT
     - ./gradlew --no-daemon
-        clean build publishToMavenLocal cyclonedxBom -x :integration-tests:test
+        clean build publishToMavenLocal cyclonedxBom resolvePitestClasspath -x :integration-tests:test
     # 3) surface whether generation changed anything (informational)
     - git diff --stat -- gradle/verification-metadata.xml || true
+    # 4) HEL-234: SHA-tied release evidence over this enforced build's outputs
+    - bash scripts/gen-release-evidence.sh build/release-evidence.md
   artifacts:
     name: verification-metadata
     paths:
       - gradle/verification-metadata.xml
+      - build/release-evidence.md
     expire_in: 90 days
 
 # HEL-235: architecture enforcement. `assertModuleHierarchy` fails the build on
@@ -127,6 +132,118 @@ publish-registry:
       fi
       ./gradlew --no-daemon publishAllPublicationsToGitLabLanRepository -x :integration-tests:test
 
+# ── HEL-234 (owner mandate 2026-08-09): changed-code coverage gate ───────────
+# Coverage ON THE LINES THE CHANGE TOUCHED must be >= 80% — the absolute module
+# floors cannot see an under-tested change inside a well-covered module. Runs
+# on every push/MR (merge-blocking: not allow_failure, so an MR pipeline red
+# blocks the merge under the project's pipelines-must-succeed setting). Base =
+# the MR diff base when in an MR pipeline, else the previous push SHA.
+diff-coverage:
+  stage: verify
+  image: maven:3.9-eclipse-temurin-21
+  needs: []
+  variables:
+    GIT_DEPTH: "0"   # the gate diffs against a historical base — no shallow clone
+    GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle-home"
+    GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx1g"
+  cache:
+    key: pkgrovekit-gradle
+    paths:
+      - .gradle-home/caches
+      - .gradle-home/wrapper
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push"
+  script:
+    - |
+      BASE="${CI_MERGE_REQUEST_DIFF_BASE_SHA:-${CI_COMMIT_BEFORE_SHA:-HEAD~1}}"
+      case "$BASE" in 0000000000000000000000000000000000000000|"") BASE="HEAD~1";; esac
+      echo "diff-coverage base: $BASE"
+      ./gradlew --no-daemon jacocoDiffCoverageCheck -PdiffCoverageBase="$BASE"
+  artifacts:
+    when: always
+    paths:
+      - build/reports/jacoco/jacocoAggregatedReport/
+    expire_in: 90 days
+
+# ── HEL-234 (owner mandate 2026-08-09): REQUIRED Oracle integration, per SHA ─
+# The Oracle-Free testcontainer suite is flaky on GitHub's shared hosted
+# runners (that job stays informational there) — but THIS runner is the LAN
+# self-hosted privileged runner, where the identical suite passes reliably, so
+# here it is a REQUIRED gate tied to the exact SHA of every push/MR. No
+# allow_failure: a red integration-oracle blocks the merge.
+integration-oracle:
+  stage: verify
+  image: maven:3.9-eclipse-temurin-21
+  timeout: 60m
+  needs: []
+  tags:
+    - privileged
+  services:
+    - name: docker:27-dind
+      alias: docker
+      command: ["--dns", "8.8.8.8", "--dns", "8.8.4.4"]
+      variables:
+        DOCKER_TLS_CERTDIR: ""
+  variables:
+    DOCKER_HOST: tcp://localhost:2375
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_DRIVER: overlay2
+    GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle-home"
+    GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx1g"
+  cache:
+    key: pkgrovekit-gradle
+    paths:
+      - .gradle-home/caches
+      - .gradle-home/wrapper
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push"
+  script:
+    - ./gradlew --no-daemon :integration-tests:test --tests '*Oracle*'
+  artifacts:
+    when: always
+    paths:
+      - integration-tests/build/test-results/test/
+      - integration-tests/build/reports/tests/test/
+    reports:
+      junit: integration-tests/build/test-results/test/TEST-*.xml
+    expire_in: 90 days
+
+# ── HEL-234 (owner mandate 2026-08-09): scheduled mutation gate ──────────────
+# PIT over the critical modules (jdbc/transfer/coordination-api/jta). The
+# per-module mutationThreshold in build.gradle.kts HARD-FAILS the pitest task —
+# and therefore this job — when too many mutants survive. Scheduled (nightly)
+# because a full mutation analysis is prohibitive per-PR; MUTATION_TIER=1
+# allows manual proof pipelines. Reports are retained a year as the trend
+# record (docs/release-evidence.md documents locations).
+mutation:
+  stage: verify
+  image: maven:3.9-eclipse-temurin-21
+  timeout: 120m
+  needs: []
+  variables:
+    GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle-home"
+    GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2g"
+  cache:
+    key: pkgrovekit-gradle
+    paths:
+      - .gradle-home/caches
+      - .gradle-home/wrapper
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $MUTATION_TIER == "1"
+  script:
+    - ./gradlew --no-daemon mutationTest
+  artifacts:
+    when: always
+    paths:
+      - pkgrovekit-jdbc/build/reports/pitest/
+      - pkgrovekit-transfer/build/reports/pitest/
+      - pkgrovekit-coordination-api/build/reports/pitest/
+      - pkgrovekit-jta/build/reports/pitest/
+    expire_in: 365 days
+
 # ── HEL-129: scheduled stress/soak tier ──────────────────────────────────────
 # Distinct from `verification-metadata` (which excludes :integration-tests:test
 # for cycle-time). Runs the live-Postgres stress + lifecycle + backpressure ITs
@@ -134,6 +251,10 @@ publish-registry:
 # an explicit STRESS_TIER=1 pipeline (manual proof runs). The Oracle lifecycle
 # matrix (OracleRealPoolLifecycleIT) stays in the local/full matrix — its 3 GB
 # image is not worth a nightly pull; traceability doc records the split.
+# HEL-234 (owner mandate 2026-08-09): now ALSO runs TransferSoakIT — a 12-min
+# bounded soak with hard LEAK/BOUNDEDNESS gates (post-GC heap ceiling + growth
+# trend, lease/session/thread leak deltas). Its soak-trend.csv is the RETAINED
+# trend artifact (365 days) so cross-night drift is comparable.
 stress-soak:
   stage: verify
   image: maven:3.9-eclipse-temurin-21
@@ -163,14 +284,17 @@ stress-soak:
   script:
     - >
       ./gradlew --no-daemon :integration-tests:test
+      -Ppkgrovekit.soak.minutes=12
       --tests "com.pkgrove.pkgrovekit.it.LifecycleStressIT"
       --tests "com.pkgrove.pkgrovekit.it.RealPoolLifecycleIT"
       --tests "com.pkgrove.pkgrovekit.it.SlowTargetBackpressureIT"
+      --tests "com.pkgrove.pkgrovekit.it.TransferSoakIT"
   artifacts:
     when: always
     paths:
       - integration-tests/build/test-results/test/
       - integration-tests/build/reports/tests/test/
+      - integration-tests/build/soak/soak-trend.csv
     reports:
       junit: integration-tests/build/test-results/test/TEST-*.xml
-    expire_in: 30 days
+    expire_in: 365 days

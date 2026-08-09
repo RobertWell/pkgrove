@@ -66,6 +66,8 @@ mp-config-api = { module = "org.eclipse.microprofile.config:microprofile-config-
 
 [plugins]
 cyclonedx = { id = "org.cyclonedx.bom", version = "1.8.2" }
+# HEL-234 (owner mandate 2026-08-09): PIT mutation testing on the critical modules
+pitest = { id = "info.solidsoft.pitest", version = "1.15.0" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 quarkus = { id = "io.quarkus", version.ref = "quarkus" }
 dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }

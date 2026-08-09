@@ -5,6 +5,24 @@ All notable changes to PkgroveKit. Pre-stable: breaking changes may occur in any
 
 ## Unreleased
 
+- HEL-234 (owner mandate 2026-08-09): **mandatory quality gates** — all
+  enforced (thresholds FAIL pipelines), none informational. (1) Changed-code
+  coverage: `jacocoDiffCoverageCheck` fails when < 80% of the coverable lines
+  a change touched are covered (GitHub `check` on PRs/pushes; GitLab
+  `diff-coverage`, merge-blocking). (2) The live-Oracle testcontainer suite is
+  now a REQUIRED per-SHA gate on the LAN GitLab privileged runner
+  (`integration-oracle`); the GitHub hosted-runner job stays informational
+  only because that runner is flaky. (3) Scheduled soak: `TransferSoakIT` —
+  bounded long-running transfer loop with hard LEAK/BOUNDEDNESS gates
+  (lease/session/thread leak deltas, 256 MB post-GC heap ceiling, heap growth
+  trend) and a `soak-trend.csv` artifact retained 365 days. (4) PIT mutation
+  testing on the critical modules with failing thresholds (jdbc 60 /
+  transfer 60 / coordination-api 70 / jta 70 % killed) — `./gradlew
+  mutationTest`, scheduled GitLab `mutation` job. (5) Retained CI evidence:
+  coverage/mutation/soak artifacts with long retention, documented in
+  `docs/release-evidence.md`. (6) `scripts/gen-release-evidence.sh` generates
+  SHA-tied, independently reproducible release evidence in both CIs.
+
 - HEL-236: **optional S3-compatible object storage** — two new modules,
   strictly opt-in (ship with the next release; no version bump here).
   **`pkgrovekit-storage-api`** is vendor-neutral (depends on core + JDK only):

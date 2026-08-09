@@ -15,6 +15,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # HEL-234: the changed-code coverage gate diffs against the PR base /
+          # previous SHA — it needs real history, not a shallow clone.
+          fetch-depth: 0
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -24,11 +28,24 @@ jobs:
       # (jacocoTestCoverageVerification rides every module's check); the two
       # aggregated tasks add the repository-wide report + 80/70 floor.
       - run: ./gradlew clean check jacocoAggregatedReport jacocoAggregatedVerification -x :integration-tests:test
+      # HEL-234 (owner mandate 2026-08-09): CHANGED-CODE coverage gate — the
+      # lines this PR/push touched must be >= 80% covered. Merge-blocking: this
+      # step fails the required `check` job. Base = PR base branch on PRs, the
+      # previous SHA on pushes to main.
+      - name: Changed-code coverage gate (HEL-234)
+        run: |
+          if [ -n "${{ github.base_ref }}" ]; then BASE="origin/${{ github.base_ref }}"; else BASE="HEAD~1"; fi
+          echo "diff-coverage base: $BASE"
+          ./gradlew jacocoDiffCoverageCheck -PdiffCoverageBase="$BASE"
       # HEL-129: generate the scenario-to-test traceability report and fail if
       # docs/test-traceability.md references a test class that no longer exists.
       - name: Generate test traceability inventory (+ drift guard)
         if: always()
         run: bash scripts/gen-test-inventory.sh build/test-inventory.csv
+      # HEL-234: SHA-tied release evidence over this job's build outputs
+      - name: Generate release evidence (HEL-234)
+        if: always()
+        run: bash scripts/gen-release-evidence.sh build/release-evidence.md
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -37,8 +54,9 @@ jobs:
             **/build/reports/tests/**
             **/build/reports/jacoco/**
             build/test-inventory.csv
+            build/release-evidence.md
             docs/test-traceability.md
-          retention-days: 7
+          retention-days: 30
 
   # HEL-234 §4: the Postgres/DuckDB testcontainer suite is a BLOCKING gate —
   # these containers are light enough for hosted runners (unlike Oracle-Free),
@@ -65,12 +83,13 @@ jobs:
 
   integration-oracle:
     runs-on: ubuntu-latest
-    # Non-blocking: the Oracle-Free testcontainer (~5GB) is unreliable on
+    # Non-blocking HERE: the Oracle-Free testcontainer (~5GB) is unreliable on
     # GitHub's shared hosted runner (fails here while the identical suite passes
-    # reliably in local `clean check` and on a resourced runner). It runs
-    # informationally with reports uploaded; the AUTHORITATIVE live-Oracle proof
-    # is the local/self-hosted run. Hard-gating Oracle needs the self-hosted
-    # runner HEL-234 §4 calls for — tracked, not faked with a flaky gate.
+    # reliably on a resourced runner). The REQUIRED, SHA-tied Oracle gate the
+    # owner mandated (HEL-234, 2026-08-09) is the GitLab `integration-oracle`
+    # job on the LAN self-hosted privileged runner (.gitlab-ci.yml) — it runs
+    # on every push/MR with no allow_failure. This hosted run stays as an
+    # informational early signal only.
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4

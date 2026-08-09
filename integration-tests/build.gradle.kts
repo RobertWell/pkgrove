@@ -59,6 +59,13 @@ tasks.withType<Test>().configureEach {
     // buffering. 512m is Gradle's own default — stated here so it stays true.
     maxHeapSize = "512m"
 
+    // HEL-234: soak duration is caller-controlled but ALWAYS bounded — local
+    // proof runs default to 2 minutes inside the test; the scheduled CI tier
+    // passes -Ppkgrovekit.soak.minutes=12 (see .gitlab-ci.yml `stress-soak`).
+    (findProperty("pkgrovekit.soak.minutes") as String?)?.let {
+        systemProperty("pkgrovekit.soak.minutes", it)
+    }
+
     // The docker-java shaded inside testcontainers defaults to Docker API v1.32,
     // which modern daemons (min API 1.40) reject outright — every container
     // start then fails with "Could not find a valid Docker environment". Pin a

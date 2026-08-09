@@ -11,6 +11,9 @@ plugins {
     // HEL-234: root-level jacoco supplies the tool classpath for the
     // aggregated report/verification tasks below
     jacoco
+    // HEL-234 (owner mandate 2026-08-09): PIT mutation testing — applied per
+    // critical module below, `apply false` here only puts it on the classpath
+    alias(libs.plugins.pitest) apply false
 }
 
 jacoco {
@@ -435,6 +438,166 @@ val jacocoAggregatedVerification = tasks.register<JacocoCoverageVerification>("j
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// HEL-234 (owner mandate 2026-08-09): CHANGED-CODE coverage gate. The absolute
+// module floors above can hide an under-tested change inside an already-well-
+// covered module — this gate computes coverage ON THE LINES THE CHANGE TOUCHED
+// and fails below 80%. Base ref comes from -PdiffCoverageBase (CI passes the
+// PR base branch / previous SHA); default origin/main, resolved through
+// merge-base so a moved base branch never inflates the diff. Only lines JaCoCo
+// reports as coverable count (comments/blank lines don't distort the ratio);
+// a diff with no coverable production lines passes vacuously — docs/test-only
+// changes must not be blocked. Wired as a merge-blocking job in BOTH CIs
+// (.github/workflows/ci.yml `check`, .gitlab-ci.yml `diff-coverage`).
+val diffCoverageMinimum = "0.80"
+
+val jacocoDiffCoverageCheck = tasks.register("jacocoDiffCoverageCheck") {
+    group = "verification"
+    description = "FAILS if coverage on changed production lines is below $diffCoverageMinimum (HEL-234)"
+    dependsOn(jacocoAggregatedReport)
+    doLast {
+        fun git(vararg args: String): Pair<Int, String> {
+            val p = ProcessBuilder(listOf("git") + args).directory(rootDir)
+                .redirectErrorStream(true).start()
+            val out = p.inputStream.bufferedReader().readText()
+            return p.waitFor() to out.trim()
+        }
+        val requested = (findProperty("diffCoverageBase") as String?) ?: "origin/main"
+        val base = git("merge-base", requested, "HEAD").let { (code, out) ->
+            if (code == 0) out else {
+                logger.warn("diff-coverage: cannot resolve merge-base($requested, HEAD): $out — falling back to HEAD~1")
+                git("rev-parse", "HEAD~1").let { (c2, o2) ->
+                    if (c2 == 0) o2
+                    else throw GradleException("diff-coverage: no usable base ref ('$requested' nor HEAD~1)")
+                }
+            }
+        }
+        // 1) changed production Kotlin lines: path -> added/modified line numbers
+        val (dc, diff) = git("diff", "--unified=0", "--no-color", base, "HEAD", "--", "*/src/main/kotlin/*.kt")
+        if (dc != 0) throw GradleException("diff-coverage: git diff failed:\n$diff")
+        val changed = linkedMapOf<String, MutableSet<Int>>()
+        var current: String? = null
+        val hunkRe = Regex("""^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@""")
+        diff.lineSequence().forEach { line ->
+            when {
+                line.startsWith("+++ b/") -> current = line.removePrefix("+++ b/")
+                line.startsWith("+++ ") -> current = null   // deleted file ("+++ /dev/null")
+                else -> hunkRe.find(line)?.let { m ->
+                    val start = m.groupValues[1].toInt()
+                    val count = m.groupValues[2].ifEmpty { "1" }.toInt()
+                    if (count > 0) current?.let { f ->
+                        changed.getOrPut(f) { linkedSetOf() }.addAll(start until start + count)
+                    }
+                }
+            }
+        }
+        if (changed.isEmpty()) {
+            logger.lifecycle("diff-coverage OK: no production Kotlin lines changed vs $requested ($base)")
+            return@doLast
+        }
+        // 2) coverage of exactly those lines, from the aggregated JaCoCo XML
+        val xmlFile = jacocoAggregatedReport.get().reports.xml.outputLocation.get().asFile
+        val dbf = javax.xml.parsers.DocumentBuilderFactory.newInstance().apply {
+            // the JaCoCo report carries a DOCTYPE; never fetch the external DTD
+            setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
+        }
+        val doc = dbf.newDocumentBuilder().parse(xmlFile)
+        val lineCoverage = mutableMapOf<String, MutableMap<Int, Boolean>>()   // "pkg/File.kt" -> line -> covered
+        val packages = doc.getElementsByTagName("package")
+        for (i in 0 until packages.length) {
+            val pkg = packages.item(i) as org.w3c.dom.Element
+            val files = pkg.getElementsByTagName("sourcefile")
+            for (j in 0 until files.length) {
+                val sf = files.item(j) as org.w3c.dom.Element
+                val map = lineCoverage.getOrPut("${pkg.getAttribute("name")}/${sf.getAttribute("name")}") { mutableMapOf() }
+                val lines = sf.getElementsByTagName("line")
+                for (k in 0 until lines.length) {
+                    val ln = lines.item(k) as org.w3c.dom.Element
+                    val nr = ln.getAttribute("nr").toInt()
+                    val covered = ln.getAttribute("ci").toInt() > 0
+                    map[nr] = (map[nr] ?: false) || covered
+                }
+            }
+        }
+        var coverable = 0
+        var covered = 0
+        val uncoveredDetail = mutableListOf<String>()
+        changed.forEach { (path, lines) ->
+            val key = path.substringAfter("src/main/kotlin/")
+            val fileLines = lineCoverage[key] ?: return@forEach   // not in the report (no production class)
+            lines.sorted().forEach { nr ->
+                fileLines[nr]?.let { isCovered ->
+                    coverable++
+                    if (isCovered) covered++ else uncoveredDetail += "$path:$nr"
+                }
+            }
+        }
+        if (coverable == 0) {
+            logger.lifecycle("diff-coverage OK: changed lines contain no coverable code (${changed.size} file(s) touched)")
+            return@doLast
+        }
+        val min = ((findProperty("diffCoverageMin") as String?) ?: diffCoverageMinimum).toDouble()
+        val ratio = covered.toDouble() / coverable
+        val pct = String.format("%.1f%%", ratio * 100)
+        val minPct = String.format("%.0f%%", min * 100)
+        if (ratio < min) {
+            throw GradleException(
+                "CHANGED-CODE COVERAGE GATE FAILED (HEL-234): $covered/$coverable changed coverable lines covered " +
+                    "($pct < $minPct). Uncovered changed lines:\n" +
+                    uncoveredDetail.joinToString("\n") { "  - $it" } +
+                    "\nBase: $requested ($base). Cover the changed lines (or split unrelated churn out of the change).",
+            )
+        }
+        logger.lifecycle("diff-coverage OK: $covered/$coverable changed coverable lines covered ($pct >= $minPct) vs $requested ($base)")
+    }
+}
+
+// ---------------------------------------------------------------------------
+// HEL-234 (owner mandate 2026-08-09): MUTATION testing. Line coverage proves
+// execution, not assertion strength — PIT mutates the critical modules'
+// bytecode and FAILS the build when too many mutants survive the suite.
+// Thresholds are ratchets like the coverage gates: set just under the measured
+// baseline (2026-08-09, pitest 1.15.8 + junit5 plugin 1.2.1 — see
+// docs/release-evidence.md), raise as the suite improves, never lower without
+// an owner-approved exception. Runtime is prohibitive per-PR, so CI runs the
+// gate in the scheduled tier (.gitlab-ci.yml `mutation`), where a threshold
+// violation HARD-FAILS the job. Local: ./gradlew mutationTest
+val mutationThresholds = mapOf(   // module -> minimum % of mutants killed
+    "pkgrovekit-jdbc" to 60,
+    "pkgrovekit-transfer" to 60,
+    "pkgrovekit-coordination-api" to 70,
+    "pkgrovekit-jta" to 70,
+)
+
+configure(subprojects.filter { it.name in mutationThresholds.keys }) {
+    apply(plugin = "info.solidsoft.pitest")
+    extensions.configure<info.solidsoft.gradle.pitest.PitestPluginExtension> {
+        pitestVersion.set("1.15.8")
+        junit5PluginVersion.set("1.2.1")
+        targetClasses.set(setOf("com.pkgrove.pkgrovekit.*"))
+        threads.set(4)
+        outputFormats.set(setOf("XML", "HTML"))
+        timestampedReports.set(false)   // stable report path => retainable CI artifact
+        exportLineCoverage.set(true)
+        avoidCallsTo.set(setOf("kotlin.jvm.internal"))   // Kotlin intrinsics = junk mutants
+        mutationThreshold.set(mutationThresholds.getValue(name))
+    }
+    // HEL-124 flow: a cheap task that resolves the PIT tool classpath so
+    // dependency locking (--write-locks) and the GitLab-generated verification
+    // metadata cover it without running a full mutation analysis.
+    tasks.register("resolvePitestClasspath") {
+        description = "Resolves the PIT tool classpath for lockfiles/verification metadata (HEL-234)"
+        doLast { configurations.getByName("pitest").resolve() }
+    }
+}
+
+// one entry point for the scheduled CI tier and local runs
+tasks.register("mutationTest") {
+    group = "verification"
+    description = "PIT mutation gates on the critical modules (HEL-234; thresholds fail the build)"
+    mutationThresholds.keys.forEach { dependsOn(":$it:pitest") }
 }
 
 /** Publishable-module convention: sources + Dokka-javadoc jars, maven-publish
