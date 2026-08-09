@@ -114,6 +114,7 @@ handling the typed outcome                commit/rollback choreography, cleanup,
 | [Adapters](docs/adapters/) | Oracle, DuckDB, PostgreSQL specifics |
 | [Reference](docs/reference/) | low-level JDBC/JDBI APIs, configuration, errors |
 | [Architecture](docs/ARCHITECTURE.md) · [ADRs](docs/adr/) | boundaries and decisions |
+| [Adoption roadmap](docs/adoption-roadmap.md) · [decision table](docs/pkgrovekit-adoption-decision-table.md) | per-repo adoption status, sequencing, reuse pattern, onboarding (HEL-239) |
 | [Security policy](SECURITY.md) · [security controls](docs/security-controls.md) | reporting a vulnerability · CVE gate, SBOM, dependency verification |
 | [Test traceability](docs/test-traceability.md) | scenario-to-test matrix · **enforced coverage gates** (HEL-234) |
 
