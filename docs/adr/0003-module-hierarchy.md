@@ -54,6 +54,9 @@ core                                     coordination-api
 | narayana → narayana-jta | **implementation** | the TM impl is an internal detail, not on narayana's public API |
 | quarkus → transfer | api | produces a `Relay` |
 | spring-boot-starter → transfer | api | produces a `Relay` |
+| storage-api → core | api | `Row`/`Schema`/`RowBatch`/`CancelToken` on the dataset/storage API (HEL-236) |
+| storage-s3 → storage-api | api | implements the public `ObjectStore` contract |
+| storage-s3 → awssdk `s3` | **implementation** | AWS types stay inside the adapter (escape hatch: `S3ObjectStore.wrap`); the netty async client is excluded — sync Apache is the transport |
 
 Drivers (`ojdbc11`, `duckdb_jdbc`, `postgresql`) stay `compileOnly` in the
 adapters — never transitive, always consumer-controlled.

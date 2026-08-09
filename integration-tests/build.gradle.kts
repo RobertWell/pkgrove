@@ -12,6 +12,10 @@ dependencies {
     testImplementation(project(":pkgrovekit-transfer"))
     testImplementation(project(":pkgrovekit-oracle"))
     testImplementation(project(":pkgrovekit-postgres"))
+    // HEL-236: database → object storage → database end-to-end proof
+    testImplementation(project(":pkgrovekit-storage-api"))
+    testImplementation(project(":pkgrovekit-storage-s3"))
+    testImplementation(libs.testcontainers.minio)
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.testcontainers.oracle)
     testImplementation(libs.testcontainers.junit)

@@ -30,5 +30,7 @@ dependencies {
         api(project(":pkgrovekit-saga"))
         api(project(":pkgrovekit-quarkus"))
         api(project(":pkgrovekit-spring-boot-starter"))
+        api(project(":pkgrovekit-storage-api"))
+        api(project(":pkgrovekit-storage-s3"))
     }
 }

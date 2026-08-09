@@ -35,10 +35,18 @@ subprojects {
 
             val required = list("requiredModules")
             val forbidden = list("forbiddenModules")
+            // HEL-236: forbid whole EXTERNAL dependency groups (by group prefix)
+            // — e.g. software.amazon.awssdk must never reach a database-only
+            // consumer's runtime classpath.
+            val forbiddenGroups = list("forbiddenGroups")
             require(required.isNotEmpty()) { "[${project.name}] fixture declared no requiredModules — spec not wired" }
 
             val missing = required.filter { it !in pkgroveOnClasspath }
             val leaked = forbidden.filter { it in pkgroveOnClasspath }
+            val leakedGroups = artifacts
+                .filter { a -> forbiddenGroups.any { g -> a.moduleVersion.id.group.startsWith(g) } }
+                .map { "${it.moduleVersion.id.group}:${it.moduleVersion.id.name}" }
+                .toSortedSet()
 
             // record the FULL runtime classpath (every group) as evidence
             val out = layout.buildDirectory.file("runtime-classpath.txt").get().asFile
@@ -54,6 +62,7 @@ subprojects {
             val problems = buildList {
                 if (missing.isNotEmpty()) add("MISSING required module(s): $missing")
                 if (leaked.isNotEmpty()) add("FORBIDDEN module(s) leaked onto runtime classpath: $leaked")
+                if (leakedGroups.isNotEmpty()) add("FORBIDDEN group(s) leaked onto runtime classpath: $leakedGroups")
             }
             if (problems.isNotEmpty()) {
                 throw GradleException(

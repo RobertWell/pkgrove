@@ -47,6 +47,17 @@ pkgrovekit-jta -> pkgrovekit-coordination-api (api)
 pkgrovekit-saga -> pkgrovekit-coordination-api (api)
 pkgrovekit-narayana -> pkgrovekit-jta (api)
 
+# ── object storage (strictly opt-in; never a dep of the spine) ───────────────
+# HEL-236: storage-api is vendor-neutral — core (Row/Schema/CancelToken/
+# DataWarning reuse) + JDK only; NO AWS SDK, MinIO SDK, database adapter,
+# framework, or coordination dep. storage-s3 implements it with AWS SDK v2
+# (external dep — not part of this graph). Nothing in the data-access spine may
+# ever grow an edge to either module: a jdbc/transfer-only consumer must resolve
+# ZERO storage or AWS SDK artifacts (asserted by the storage-s3 and
+# postgres-transfer consumer fixtures).
+pkgrovekit-storage-api -> pkgrovekit-core (api)
+pkgrovekit-storage-s3 -> pkgrovekit-storage-api (api)
+
 # ── framework adapters (strictly opt-in) ─────────────────────────────────────
 # Each adapter depends ONLY on transfer (it produces a Relay). Dialect modules
 # are resolved at runtime via ServiceLoader, so there is deliberately NO

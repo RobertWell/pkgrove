@@ -5,6 +5,53 @@ All notable changes to PkgroveKit. Pre-stable: breaking changes may occur in any
 
 ## Unreleased
 
+- HEL-236: **optional S3-compatible object storage** — two new modules,
+  strictly opt-in (ship with the next release; no version bump here).
+  **`pkgrovekit-storage-api`** is vendor-neutral (depends on core + JDK only):
+  `ObjectStore` (put/get/list/delete/copy, typed `StorageException` outcomes,
+  validated `ObjectKey`s that reject query strings/`..`/control chars),
+  streaming `ContentSource` with an explicit `repeatable` retry contract,
+  SHA-256/CRC32C `Checksum`s verified server-side where the provider can and
+  client-side otherwise (mismatch always fails typed, never stores corrupt
+  data), conditional writes (`WriteCondition.IfAbsent`/`IfMatch`), a
+  **capability model** (`StorageCapabilities.require(...)` fails BEFORE data
+  movement with a typed `CapabilityRejectedException` listing what the
+  provider lacks), bounded multipart (`MultipartTransfer`: peak memory =
+  `concurrency × partSize`; failure/cancellation ABORTS the upload),
+  **staged atomic publish** (`StagingArea`: staging prefix → server-side copy
+  to run-unique keys → conditional-create manifest as the single commit point —
+  object storage has no atomic rename and none is assumed; deterministic
+  abandoned-staging cleanup), manifest-committed row datasets
+  (`ObjectDataset` + dependency-free `jsonl-v1` format; per-part sha256 + row
+  counts verified on read), append-only conditional **checkpoints**
+  (`CheckpointStore`: concurrent workers conflict typed, never overwrite),
+  redacted failed-row **quarantine** (`QuarantineWriter`: sha256 fingerprints,
+  value-free keys/summaries), and a full-capability `InMemoryObjectStore`
+  reference/testing implementation. **`pkgrovekit-storage-s3`** implements the
+  API with **AWS SDK for Java 2.x** (`software.amazon.awssdk:s3` + sync Apache
+  transport only — netty async client excluded, no SDK BOM surface): custom
+  endpoint/region/credentials (redacted `toString`)/path-style/retries/
+  timeouts/TLS, per-provider `S3CompatibilityProfile`s (amazonS3/minio/
+  generic), adapter-level presigned GETs whose textual form redacts the signed
+  query, incomplete-upload listing + deterministic `abortIncompleteUploads`
+  cleanup, and an `S3ObjectStore.wrap(S3Client)` escape hatch. **MinIO is the
+  CI-tested target** (Testcontainers, pinned image, same AWS client as
+  production — that identity is the compatibility proof); Amazon S3 is the
+  reference cloud target via an opt-in protected-credentials smoke test
+  (`AmazonS3SmokeIT`, docs/storage.md). The complete **database → object
+  storage → database** path is proven live (Postgres → MinIO dataset → DuckDB,
+  `StorageDatasetRoundTripIT`, rides the blocking CI gate). Dependency
+  isolation is enforced from both sides: `assertModuleHierarchy` now fails if
+  any module except storage-s3 carries `software.amazon.awssdk`/`io.minio` at
+  runtime, and the consumer fixtures gain `forbiddenGroups` assertions
+  (`jdbc-only`/`postgres-transfer` prove ZERO AWS SDK artifacts) plus a new
+  `storage-s3` fixture (asserts the storage graph and that netty stays out).
+  Docs: `docs/storage.md` scenario tutorials, scenarios.md recipe 9, README
+  use-case rows, ADR-0003 edge table. Complements the DuckDB-native
+  Parquet-on-S3 publisher (`com.pkgrove.pkgrovekit.duckdb.s3`, below) — that
+  path stays the Parquet answer; `storage-api` deliberately does not take the
+  Hadoop dependency tree.
+
 - HEL-235: **explicit, acyclic module hierarchy with minimal transitive deps**,
   enforced in CI. The allowed pkgrovekit→pkgrovekit graph (with required Gradle
   scope) is now a machine-readable map at `gradle/allowed-dependencies.txt`,

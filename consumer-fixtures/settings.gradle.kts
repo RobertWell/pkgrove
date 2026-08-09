@@ -19,4 +19,8 @@ include(
     "jdbi",
     "xa-narayana",
     "saga",
+    // HEL-236: object storage is opt-in; the fixture proves the storage graph
+    // AND (with the AWS-free assertions in jdbc-only/postgres-transfer) that
+    // nobody else resolves the AWS SDK.
+    "storage-s3",
 )

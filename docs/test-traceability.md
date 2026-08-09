@@ -3,7 +3,7 @@
 Maps every validation scenario / acceptance criterion of the source issues
 (HEL-119/120/125/126/127/128) to the automated test(s) that verify it. This file
 is the **authored** half; `scripts/gen-test-inventory.sh` is the **generated**
-half — it lists every `@Test` in source (426 methods, 2026-08-09) and fails CI if
+half — it lists every `@Test` in source (532 methods, 2026-08-09) and fails CI if
 any test *class* named here no longer exists (drift guard). Both run in the GitHub
 `check` job (non-Docker); the Docker ITs run in the non-blocking `integration` job
 and on the self-hosted/local run.
@@ -106,6 +106,20 @@ assurance this file exists to keep honest).
 | Dialect type/DDL/bind correctness (Oracle/PG/DuckDB) | `OracleDialectTest` (7); `PostgresDialectTest` (7); `DuckDbDialectTest` (8) | U | — | PR | PASS |
 | Identifier gate never echoes unsafe input | `ModelTest`: identifier gate validates and quotes without echoing bad names | U | — | PR | PASS |
 | Supply-chain / dependency verification | GitLab `verification-metadata` job (enforced build); GitHub `security.yml` (Trivy) | — | — | PR | PASS |
+
+## HEL-236 — S3-compatible object storage
+
+| Scenario | Test(s) | Level | DB | Tier | State |
+|---|---|---|---|---|---|
+| Vendor-neutral store contract (put/get/list/delete/copy, conditional writes, checksums, multipart, range) | `ObjectStoreContractTest` (in-memory reference); `MinioObjectStoreIT` (same semantics, real MinIO via AWS SDK, path-style) | U / I | MinIO | PR | PASS |
+| Key validation + capability fail-fast + typed outcomes | `KeysAndCapabilitiesTest`; `S3ConfigTest` (pre-I/O rejection, secret-redacted toString, presigned-query redaction) | U | — | PR | PASS |
+| Bounded multipart + abort on failure/cancellation + deterministic incomplete-upload cleanup | `MultipartTransferTest` (part-buffer bound, abort, capability gates); `MinioMultipartIT` (128 MiB heap-bounded round trip, provider-side abort, `abortIncompleteUploads`, conditional complete) | U / I | MinIO | PR | PASS |
+| Staged atomic publish + abandoned-staging cleanup + checkpoint conflicts | `StagingAndCheckpointTest`; `MinioWorkflowsIT` | U / I | MinIO | PR | PASS |
+| Manifest-committed datasets: bounded parts, corruption/truncation refusal, interrupted-export cleanup, quarantine redaction | `DatasetAndFormatTest`; `JsonTest`; `MinioWorkflowsIT` | U / I | MinIO | PR | PASS |
+| Adapter edges: CRC32C, degraded-capability local verification, `wrap` escape hatch, transport-failure retry verdicts | `MinioAdapterEdgeIT` | I | MinIO | PR | PASS |
+| Complete database → object storage → database | `StorageDatasetRoundTripIT` (Postgres → MinIO dataset → DuckDB, value-fidelity asserted) | E2E | PG+MinIO | PR (blocking `integration-postgres`) | PASS |
+| Consumer dependency isolation (no AWS SDK for db-only users) | `assertModuleHierarchy` storage-leak check; consumer fixtures `jdbc-only`/`postgres-transfer` (`forbiddenGroups`) + `storage-s3` | — | — | PR | PASS |
+| Amazon S3 cloud smoke | `AmazonS3SmokeIT` — opt-in via `PKGROVEKIT_S3_SMOKE_BUCKET` + protected credentials (docs/storage.md); never in PR CI | I | AWS S3 | manual/release | OPT-IN |
 
 ## Honest gaps (tracked, NOT claimed complete)
 

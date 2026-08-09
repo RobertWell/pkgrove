@@ -18,6 +18,9 @@ jboss-logging = "3.5.3.Final"
 # HEL-172: framework adapters. Frameworks are compileOnly in the adapters and
 # full only in their (unpublished) integration-test modules.
 spring-boot = "3.3.5"
+# HEL-236: S3-compatible object storage adapter — AWS SDK for Java 2.x, s3
+# module only (never the full SDK BOM surface).
+awssdk = "2.51.3"
 spring = "6.1.14"
 quarkus = "3.21.1"
 cdi-api = "4.0.1"
@@ -37,6 +40,13 @@ junit-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 testcontainers-oracle = { module = "org.testcontainers:oracle-free", version.ref = "testcontainers" }
 testcontainers-junit = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
 testcontainers-postgres = { module = "org.testcontainers:postgresql", version.ref = "testcontainers" }
+# HEL-236: MinIO is the tested S3-compatible target (no MinIO SDK — the AWS
+# SDK client speaks to it, which is exactly the compatibility being proven).
+testcontainers-minio = { module = "org.testcontainers:minio", version.ref = "testcontainers" }
+awssdk-s3 = { module = "software.amazon.awssdk:s3", version.ref = "awssdk" }
+# apache-client is s3's own default sync transport (runtime scope in its POM);
+# declared explicitly because the adapter configures it (timeouts, TLS).
+awssdk-apache-client = { module = "software.amazon.awssdk:apache-client", version.ref = "awssdk" }
 postgres-jdbc = { module = "org.postgresql:postgresql", version.ref = "postgres-driver" }
 hikaricp = { module = "com.zaxxer:HikariCP", version.ref = "hikaricp" }
 jakarta-transaction-api = { module = "jakarta.transaction:jakarta.transaction-api", version.ref = "jakarta-transaction" }

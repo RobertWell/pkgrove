@@ -29,6 +29,8 @@ consumer fixture that CI asserts.
 | Wire it into **Quarkus** | `pkgrovekit-quarkus` (+ a dialect) | core, jdbc, transfer | postgres/duckdb, **spring**, coordination |
 | Commit atomically across 2 XA DBs | `pkgrovekit-narayana` | coordination-api, jta | the whole data-access spine, saga |
 | Coordinate without distributed ACID | `pkgrovekit-saga` | coordination-api | jta, narayana, the data-access spine |
+| Stream datasets to/from **S3-compatible storage** | `pkgrovekit-storage-s3` | storage-api, AWS SDK `s3` (sync only) | dialects, jdbi, coordination, frameworks, MinIO SDK |
+| Write provider-neutral storage workflows/tests | `pkgrovekit-storage-api` | core (incl. `InMemoryObjectStore`) | **any** AWS SDK artifact, everything else |
 
 **Recommended combinations:** `spring-boot-starter` + `postgres`; `quarkus` +
 `oracle`; `oracle` + `duckdb` for cross-engine copies; `jdbi` alone for
@@ -58,9 +60,11 @@ core                             coordination-api           spring-boot-starter 
  └─ jdbc                          ├─ jta ─ narayana          quarkus ─────────────┤
      ├─ transfer                  └─ saga                                         │
      ├─ oracle                                              each depends only on ─┘
-     ├─ duckdb                    dialects are discovered    transfer; dialects are
-     ├─ postgres                  at RUNTIME by the          resolved via ServiceLoader
-     └─ jdbi (─ transfer)         framework adapters
+     ├─ duckdb                    object storage (opt-in)    transfer; dialects are
+     ├─ postgres                  ──────────────────────     resolved via ServiceLoader
+     └─ jdbi (─ transfer)         core ─ storage-api ─ storage-s3 (AWS SDK v2)
+                                  the spine NEVER depends on storage — database-
+                                  only consumers resolve zero AWS SDK artifacts
 ```
 
 The allowed edges live in a machine-readable map
@@ -73,7 +77,8 @@ enforced by `./gradlew assertModuleHierarchy` (see
 | | |
 |---|---|
 | [Getting started](docs/getting-started.md) | dependency setup, modules, first workflow |
-| [Dependency recipes](docs/scenarios.md) | the 8 scenarios above, in full |
+| [Dependency recipes](docs/scenarios.md) | the 9 scenarios above, in full |
+| [Object storage](docs/storage.md) | MinIO/Amazon S3 datasets, staging+manifest publish, checkpoints, capabilities |
 | [Workflow style](docs/workflow-style.md) | conventions, API tiers, fan-out/concurrency |
 | [Transformations](docs/transformations.md) | SQL vs row mapping vs batches vs ordered grouping |
 | [Transactions](docs/TRANSACTIONS.md) | outcomes, retries, checkpoints, policies |
@@ -182,7 +187,8 @@ artifact-level reference.
 
 | | |
 |---|---|
-| [Dependency recipes](docs/scenarios.md) | the 8 scenarios in full: exact deps, present, absent, drivers |
+| [Dependency recipes](docs/scenarios.md) | the 9 scenarios in full: exact deps, present, absent, drivers |
+| [Object storage](docs/storage.md) | S3-compatible datasets, staging/publish, checkpoints, capability model (HEL-236) |
 | [Module hierarchy ADR](docs/adr/0003-module-hierarchy.md) · [allowed graph](gradle/allowed-dependencies.txt) | the enforced boundary + BOM design (HEL-235) |
 | [Transformations](docs/transformations.md) | decision guide: SQL vs row mapping vs batches vs ordered grouping |
 | [Transactions](docs/TRANSACTIONS.md) | outcomes, retries, checkpoints, policies |

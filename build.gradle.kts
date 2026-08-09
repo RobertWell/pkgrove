@@ -103,6 +103,9 @@ configure(subprojects.filter { it.name != bomModule }) {
 val standardModules = listOf(
     "pkgrovekit-core", "pkgrovekit-jdbc", "pkgrovekit-jdbi",
     "pkgrovekit-oracle", "pkgrovekit-duckdb", "pkgrovekit-transfer", "pkgrovekit-postgres",
+    // HEL-236: the storage modules are opt-in themselves, but they must never
+    // carry coordination/framework artifacts either.
+    "pkgrovekit-storage-api", "pkgrovekit-storage-s3",
 )
 val forbiddenCoordinationGroups = listOf(
     "jakarta.transaction", "org.jboss.narayana",
@@ -156,6 +159,7 @@ val hierarchyAdapters = listOf("pkgrovekit-oracle", "pkgrovekit-duckdb", "pkgrov
 val hierarchyStandardModules = listOf(
     "pkgrovekit-core", "pkgrovekit-jdbc", "pkgrovekit-jdbi",
     "pkgrovekit-oracle", "pkgrovekit-duckdb", "pkgrovekit-transfer", "pkgrovekit-postgres",
+    "pkgrovekit-storage-api", "pkgrovekit-storage-s3",
 )
 val hierarchyFrameworkGroups = listOf(
     "org.springframework", "io.quarkus", "io.agroal",
@@ -254,8 +258,10 @@ val assertModuleHierarchy = tasks.register("assertModuleHierarchy") {
             }
         }
 
-        // 4) framework leak into the driver-free spine
-        for (module in listOf("pkgrovekit-core", "pkgrovekit-jdbc", "pkgrovekit-transfer")) {
+        // 4) framework leak into the driver-free spine (+ the storage modules —
+        //    HEL-236: they are framework-free like the spine)
+        for (module in listOf("pkgrovekit-core", "pkgrovekit-jdbc", "pkgrovekit-transfer",
+                              "pkgrovekit-storage-api", "pkgrovekit-storage-s3")) {
             runtimeArtifacts(module)
                 .filter { id -> hierarchyFrameworkGroups.any { id.group.startsWith(it) } }
                 .forEach { violations += "FRAMEWORK LEAK: $module runtime carries ${it.group}:${it.name}" }
@@ -293,6 +299,15 @@ val assertModuleHierarchy = tasks.register("assertModuleHierarchy") {
             runtimeArtifacts(module)
                 .filter { id -> hierarchyTestGroups.any { id.group == it || id.group.startsWith("$it.") } }
                 .forEach { violations += "TEST DEP ON RUNTIME: $module runtime carries test-only ${it.group}:${it.name}" }
+        }
+
+        // 10.5) HEL-236: AWS SDK containment — storage-s3 is the ONLY module
+        //     allowed to carry software.amazon.awssdk (or any MinIO SDK) at
+        //     runtime. A database-only consumer must never resolve S3 bits.
+        for (module in hierarchyModules.filter { it != hierarchyBom && it != "pkgrovekit-storage-s3" }) {
+            runtimeArtifacts(module)
+                .filter { it.group.startsWith("software.amazon.awssdk") || it.group.startsWith("io.minio") }
+                .forEach { violations += "STORAGE LEAK: $module runtime carries ${it.group}:${it.name}" }
         }
 
         // 10) BOM completeness — every publishable module (except the BOM) is pinned

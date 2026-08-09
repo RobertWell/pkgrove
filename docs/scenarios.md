@@ -197,6 +197,33 @@ implementation("com.pkgrove:pkgrovekit-saga")
 | **Consumer-owned** | your compensating actions |
 | **Intended user** | a coordinated multi-step workflow without distributed ACID |
 
+## 9. S3-compatible object storage (opt-in, HEL-236)
+
+Stream datasets, staging artifacts, manifests, checkpoints and quarantine
+evidence to MinIO / Amazon S3 / other S3-compatible storage — next to (never
+inside) the database workflow. See [storage.md](storage.md) for the full
+scenario tutorials.
+
+```kotlin
+implementation("com.pkgrove:pkgrovekit-transfer")   // or just -jdbc
+implementation("com.pkgrove:pkgrovekit-storage-s3")
+```
+
+| | |
+|---|---|
+| **Transitive present** | `pkgrovekit-storage-api`, `software.amazon.awssdk:s3` (+ its sync Apache transport; **netty async client excluded**) |
+| **Notably absent** | every dialect, jdbi, coordination, all frameworks, MinIO SDK |
+| **Consumer-owned** | bucket provisioning + credentials (default AWS chain or explicit static keys) |
+| **Intended user** | a data workflow exporting/importing datasets through object storage |
+
+The reverse guarantee matters more: recipes 1–8 resolve **zero**
+`software.amazon.awssdk` artifacts. That is asserted from the consumer side by
+the `jdbc-only` and `postgres-transfer` fixtures (`forbiddenGroups`) and from
+the producer side by `assertModuleHierarchy` (storage-s3 is the only module
+whose runtime may carry the AWS SDK). Vendor-neutral code can depend on
+`pkgrovekit-storage-api` alone — core + JDK only, includes an
+`InMemoryObjectStore` for tests.
+
 ---
 
 ## Verifying these boundaries yourself

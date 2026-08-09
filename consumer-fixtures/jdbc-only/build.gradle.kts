@@ -10,4 +10,7 @@ extra["requiredModules"] = "pkgrovekit-core,pkgrovekit-jdbc"
 extra["forbiddenModules"] =
     "pkgrovekit-transfer,pkgrovekit-jdbi,pkgrovekit-oracle,pkgrovekit-duckdb," +
         "pkgrovekit-postgres,pkgrovekit-coordination-api,pkgrovekit-jta," +
-        "pkgrovekit-narayana,pkgrovekit-saga,pkgrovekit-quarkus,pkgrovekit-spring-boot-starter"
+        "pkgrovekit-narayana,pkgrovekit-saga,pkgrovekit-quarkus,pkgrovekit-spring-boot-starter," +
+        "pkgrovekit-storage-api,pkgrovekit-storage-s3"
+// HEL-236: a database-only consumer resolves ZERO AWS SDK / MinIO artifacts
+extra["forbiddenGroups"] = "software.amazon.awssdk,io.minio"

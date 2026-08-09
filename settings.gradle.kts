@@ -27,6 +27,13 @@ include(
     // standard modules (assertCoordinationIsolation covers these groups too).
     "pkgrovekit-quarkus",
     "pkgrovekit-spring-boot-starter",
+    // HEL-236: optional S3-compatible object storage. storage-api is
+    // vendor-neutral (core + JDK only); storage-s3 is the AWS-SDK-v2 adapter.
+    // NEVER a dependency of the data-access spine — database-only consumers
+    // must not resolve AWS SDK modules (enforced by assertModuleHierarchy +
+    // the consumer fixtures).
+    "pkgrovekit-storage-api",
+    "pkgrovekit-storage-s3",
     "integration-tests",
     "integration-tests-quarkus",
 )

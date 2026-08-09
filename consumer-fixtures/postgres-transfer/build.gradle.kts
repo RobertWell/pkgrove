@@ -11,4 +11,7 @@ extra["requiredModules"] = "pkgrovekit-core,pkgrovekit-jdbc,pkgrovekit-postgres,
 extra["forbiddenModules"] =
     "pkgrovekit-oracle,pkgrovekit-duckdb,pkgrovekit-jdbi," +
         "pkgrovekit-coordination-api,pkgrovekit-jta,pkgrovekit-narayana," +
-        "pkgrovekit-saga,pkgrovekit-quarkus,pkgrovekit-spring-boot-starter"
+        "pkgrovekit-saga,pkgrovekit-quarkus,pkgrovekit-spring-boot-starter," +
+        "pkgrovekit-storage-api,pkgrovekit-storage-s3"
+// HEL-236: transfer WITHOUT storage resolves ZERO AWS SDK / MinIO artifacts
+extra["forbiddenGroups"] = "software.amazon.awssdk,io.minio"
