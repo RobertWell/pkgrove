@@ -115,6 +115,15 @@ handling the typed outcome                commit/rollback choreography, cleanup,
 | [Reference](docs/reference/) | low-level JDBC/JDBI APIs, configuration, errors |
 | [Architecture](docs/ARCHITECTURE.md) · [ADRs](docs/adr/) | boundaries and decisions |
 | [Security policy](SECURITY.md) · [security controls](docs/security-controls.md) | reporting a vulnerability · CVE gate, SBOM, dependency verification |
+| [Test traceability](docs/test-traceability.md) | scenario-to-test matrix · **enforced coverage gates** (HEL-234) |
+
+Quality gates (HEL-234): every production module runs under JaCoCo and its
+`check` **fails** below 80% line / 70% branch coverage (85/75 for the critical
+`pkgrovekit-jdbc`, `pkgrovekit-transfer`, `pkgrovekit-jta`,
+`pkgrovekit-coordination-api`); `./gradlew jacocoAggregatedVerification`
+enforces the same floor repository-wide, and the Postgres testcontainer suite
+is a blocking PR check (`:integration-tests:postgresIntegrationTest`).
+Coverage reports (XML + HTML) are published as CI artifacts on every build.
 
 Versioning: pre-stable `0.x`, immutable releases only (MAJOR = breaking API or
 major workflow redesign, MINOR = backward-compatible enhancement, PATCH = fix;

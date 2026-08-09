@@ -6,4 +6,7 @@ dependencies {
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly(libs.junit.launcher)
     testRuntimeOnly(libs.duckdb.jdbc)
+    // HEL-234: SavepointPerBatch needs an engine with REAL JDBC savepoints
+    // (DuckDB has none) — H2 in-memory keeps the suite zero-config.
+    testRuntimeOnly(libs.h2)
 }

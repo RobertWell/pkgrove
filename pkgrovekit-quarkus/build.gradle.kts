@@ -16,5 +16,10 @@ dependencies {
     // compileOnly does NOT reach the test classpath — the config-parsing tests
     // implement a tiny in-memory org.eclipse.microprofile.config.Config fake.
     testImplementation(libs.mp.config.api)
+    // HEL-234: producer misconfiguration-path tests run against the REAL CDI
+    // Instance/qualifier types and Agroal API (fakes implement the interfaces;
+    // still no container, no Arc).
+    testImplementation(libs.cdi.api)
+    testImplementation(libs.quarkus.agroal)
     testRuntimeOnly(libs.junit.launcher)
 }

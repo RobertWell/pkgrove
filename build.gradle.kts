@@ -8,6 +8,13 @@ plugins {
     alias(libs.plugins.dokka) apply false
     // HEL-124 §7: SBOM of the actual resolved dependency graph (CycloneDX)
     alias(libs.plugins.cyclonedx)
+    // HEL-234: root-level jacoco supplies the tool classpath for the
+    // aggregated report/verification tasks below
+    jacoco
+}
+
+jacoco {
+    toolVersion = "0.8.11"
 }
 
 // Aggregate SBOM over all publishable modules; runtime vs test scopes are
@@ -120,6 +127,104 @@ val assertCoordinationIsolation = tasks.register("assertCoordinationIsolation") 
 // every `check` run (and therefore CI) enforces the isolation rule
 subprojects {
     tasks.matching { it.name == "check" }.configureEach { dependsOn(assertCoordinationIsolation) }
+}
+
+// ---------------------------------------------------------------------------
+// HEL-234: coverage is ENFORCED, not just reported. Every production module
+// runs under JaCoCo and its `check` FAILS below the thresholds. Gates:
+//   - critical modules (jdbc, transfer, jta, coordination-api): 85% line / 75% branch
+//   - every other production module: 80% line / 70% branch
+// Ratchet policy (HEL-234): when a module's measured baseline exceeds its
+// gate, RAISE the gate — never lower one to match a regression (that needs an
+// explicit owner-approved exception). Tool version is pinned so local and CI
+// runs measure with the same engine (0.8.11 = the Gradle 8.7 default).
+// The integration-test modules have no main sources — they are measurement
+// PRODUCERS only; their exec data feeds the aggregated report below.
+val productionModules = subprojects.filter { it.name.startsWith("pkgrovekit-") }
+val criticalCoverageModules = setOf(
+    "pkgrovekit-jdbc", "pkgrovekit-transfer", "pkgrovekit-jta", "pkgrovekit-coordination-api",
+)
+
+configure(productionModules) {
+    apply(plugin = "jacoco")
+    extensions.configure<JacocoPluginExtension> {
+        toolVersion = "0.8.11"
+    }
+    tasks.named<JacocoReport>("jacocoTestReport") {
+        dependsOn(tasks.named("test"))
+        reports {
+            xml.required.set(true)   // machine-readable for CI/badges
+            html.required.set(true)  // human-readable artifact
+        }
+    }
+    val minLine = if (name in criticalCoverageModules) "0.85" else "0.80"
+    val minBranch = if (name in criticalCoverageModules) "0.75" else "0.70"
+    tasks.named<JacocoCoverageVerification>("jacocoTestCoverageVerification") {
+        dependsOn(tasks.named("test"))
+        violationRules {
+            rule {
+                limit {
+                    counter = "LINE"
+                    value = "COVEREDRATIO"
+                    minimum = minLine.toBigDecimal()
+                }
+            }
+            rule {
+                limit {
+                    counter = "BRANCH"
+                    value = "COVEREDRATIO"
+                    minimum = minBranch.toBigDecimal()
+                }
+            }
+        }
+    }
+    // the gate rides `check`, so plain `./gradlew check` (and therefore CI)
+    // cannot pass with under-covered production code
+    tasks.named("check") {
+        dependsOn("jacocoTestReport", "jacocoTestCoverageVerification")
+    }
+}
+
+// HEL-234: repository-wide merged coverage (report + enforced floor).
+// Merges every exec file present under any module — unit runs always, plus
+// integration/testcontainer exec data when those suites have run — over the
+// production-module class dirs. Repo gates: 80% line / 70% branch.
+val jacocoAggregatedReport = tasks.register<JacocoReport>("jacocoAggregatedReport") {
+    group = "verification"
+    description = "Merged line/branch coverage report over all production modules (HEL-234)"
+    productionModules.forEach { dependsOn("${it.path}:test") }
+    executionData(fileTree(rootDir) { include("*/build/jacoco/*.exec") })
+    classDirectories.setFrom(productionModules.map { it.layout.buildDirectory.dir("classes/kotlin/main") })
+    sourceDirectories.setFrom(productionModules.map { it.file("src/main/kotlin") })
+    reports {
+        xml.required.set(true)
+        html.required.set(true)
+    }
+}
+
+val jacocoAggregatedVerification = tasks.register<JacocoCoverageVerification>("jacocoAggregatedVerification") {
+    group = "verification"
+    description = "FAILS the build if repository-wide coverage drops below 80% line / 70% branch (HEL-234)"
+    productionModules.forEach { dependsOn("${it.path}:test") }
+    executionData(fileTree(rootDir) { include("*/build/jacoco/*.exec") })
+    classDirectories.setFrom(productionModules.map { it.layout.buildDirectory.dir("classes/kotlin/main") })
+    sourceDirectories.setFrom(productionModules.map { it.file("src/main/kotlin") })
+    violationRules {
+        rule {
+            limit {
+                counter = "LINE"
+                value = "COVEREDRATIO"
+                minimum = "0.80".toBigDecimal()
+            }
+        }
+        rule {
+            limit {
+                counter = "BRANCH"
+                value = "COVEREDRATIO"
+                minimum = "0.70".toBigDecimal()
+            }
+        }
+    }
 }
 
 /** Publishable-module convention: sources + Dokka-javadoc jars, maven-publish

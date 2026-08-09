@@ -35,6 +35,18 @@ dependencies {
     testImplementation(libs.postgres.jdbc)
 }
 
+// HEL-234 §4: the Postgres/DuckDB container suite is a BLOCKING PR gate in CI
+// (ci.yml `integration-postgres`); only the resource-heavy Oracle-Free image
+// stays informational on hosted runners. Same test sources — this task is a
+// filtered view of `test`, so the gate cannot drift from the real suite.
+tasks.register<Test>("postgresIntegrationTest") {
+    description = "Container-backed integration suite minus Oracle-Free (blocking in CI — HEL-234)"
+    group = "verification"
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    filter { excludeTestsMatching("*Oracle*") }
+}
+
 tasks.withType<Test>().configureEach {
     // HEL-256: PostgresStreamingIT asserts on RETAINED heap, so the heap ceiling
     // has to be a property of the test rather than of whoever's machine runs it.

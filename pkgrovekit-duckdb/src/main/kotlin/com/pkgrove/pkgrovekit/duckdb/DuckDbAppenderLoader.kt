@@ -73,6 +73,12 @@ object DuckDbAppenderLoader : BulkLoader {
         val duck = connection.unwrap(DuckDBConnection::class.java)
         val previousAutoCommit = connection.autoCommit
         connection.autoCommit = false
+        // HEL-234: DuckDB opens the JDBC transaction LAZILY on the first
+        // statement. Without anchoring it here, the Appender's close()-flush
+        // runs in its own autocommit — a cancelled load would then leave the
+        // already-streamed rows COMMITTED, breaking the all-or-nothing
+        // contract (caught by DuckDbAppenderLoaderTest's cancellation case).
+        connection.createStatement().use { it.execute("SELECT 1") }
         var rowsStreamed = 0L
         var batchIndex = -1
         try {

@@ -20,7 +20,10 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v3
-      - run: ./gradlew clean check -x :integration-tests:test
+      # HEL-234: `check` now carries the ENFORCED per-module JaCoCo gates
+      # (jacocoTestCoverageVerification rides every module's check); the two
+      # aggregated tasks add the repository-wide report + 80/70 floor.
+      - run: ./gradlew clean check jacocoAggregatedReport jacocoAggregatedVerification -x :integration-tests:test
       # HEL-129: generate the scenario-to-test traceability report and fail if
       # docs/test-traceability.md references a test class that no longer exists.
       - name: Generate test traceability inventory (+ drift guard)
@@ -32,20 +35,16 @@ jobs:
           name: check-reports
           path: |
             **/build/reports/tests/**
+            **/build/reports/jacoco/**
             build/test-inventory.csv
             docs/test-traceability.md
           retention-days: 7
 
-  integration:
+  # HEL-234 §4: the Postgres/DuckDB testcontainer suite is a BLOCKING gate —
+  # these containers are light enough for hosted runners (unlike Oracle-Free),
+  # so live-Postgres correctness is required on every PR, tied to the SHA.
+  integration-postgres:
     runs-on: ubuntu-latest
-    # Non-blocking: the Oracle-Free testcontainer (~5GB) is unreliable on
-    # GitHub's shared hosted runner (fails here while the identical suite passes
-    # reliably in local `clean check` and on a resourced runner). It runs
-    # informationally with reports uploaded; the AUTHORITATIVE live-DB proof is
-    # the local/self-hosted run. `check` (unit/module/dialect + doc examples) is
-    # the blocking gate. Revisit with a self-hosted runner if hard-gating is
-    # required.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -54,14 +53,36 @@ jobs:
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v3
       # Dependency verification (HEL-124) is generated over the release/publish
-      # graph (clean check publishToMavenLocal); the heavy testcontainer test-
-      # RUNTIME deps are deliberately NOT pinned there (they never ship in a
-      # published artifact). Run this non-blocking job with lenient verification
-      # so it exercises the live DBs instead of failing at dependency resolution.
-      - run: ./gradlew --dependency-verification lenient :integration-tests:test
+      # graph; heavy testcontainer test-RUNTIME deps are deliberately not
+      # pinned there (they never ship in a published artifact) — lenient here.
+      - run: ./gradlew --dependency-verification lenient :integration-tests:postgresIntegrationTest
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: integration-reports
+          name: integration-postgres-reports
+          path: 'integration-tests/build/reports/tests/**'
+          retention-days: 7
+
+  integration-oracle:
+    runs-on: ubuntu-latest
+    # Non-blocking: the Oracle-Free testcontainer (~5GB) is unreliable on
+    # GitHub's shared hosted runner (fails here while the identical suite passes
+    # reliably in local `clean check` and on a resourced runner). It runs
+    # informationally with reports uploaded; the AUTHORITATIVE live-Oracle proof
+    # is the local/self-hosted run. Hard-gating Oracle needs the self-hosted
+    # runner HEL-234 §4 calls for — tracked, not faked with a flaky gate.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v3
+      - run: ./gradlew --dependency-verification lenient :integration-tests:test --tests '*Oracle*'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-oracle-reports
           path: 'integration-tests/build/reports/tests/**'
           retention-days: 7

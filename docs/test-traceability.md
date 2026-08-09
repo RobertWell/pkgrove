@@ -3,7 +3,7 @@
 Maps every validation scenario / acceptance criterion of the source issues
 (HEL-119/120/125/126/127/128) to the automated test(s) that verify it. This file
 is the **authored** half; `scripts/gen-test-inventory.sh` is the **generated**
-half — it lists every `@Test` in source (149 methods, 2026-08-03) and fails CI if
+half — it lists every `@Test` in source (426 methods, 2026-08-09) and fails CI if
 any test *class* named here no longer exists (drift guard). Both run in the GitHub
 `check` job (non-Docker); the Docker ITs run in the non-blocking `integration` job
 and on the self-hosted/local run.
@@ -11,6 +11,35 @@ and on the self-hosted/local run.
 Levels: **U**=unit (no DB), **C**=adapter contract (embedded DuckDB, no Docker),
 **I**=integration (live testcontainer DB), **E2E**=cross-executor, **S**=stress,
 **F**=fault-injection. CI tier: **PR**=blocking, **INT**=integration(non-blocking).
+
+## Enforced coverage gates (HEL-234)
+
+Coverage is a **gate, not a report**: every production module runs under JaCoCo
+(pinned 0.8.11) and its `check` fails below the threshold. Ratchet policy:
+when a measured baseline exceeds its gate, raise the gate — never lower one to
+match a regression (owner-approved exception required).
+
+| Scope | Line | Branch | Enforced by |
+|---|---|---|---|
+| `pkgrovekit-jdbc`, `pkgrovekit-transfer`, `pkgrovekit-jta`, `pkgrovekit-coordination-api` (critical) | ≥ 85% | ≥ 75% | `jacocoTestCoverageVerification` on each module's `check` |
+| every other production module | ≥ 80% | ≥ 70% | `jacocoTestCoverageVerification` on each module's `check` |
+| repository-wide (merged, incl. any integration exec data present) | ≥ 80% | ≥ 70% | `./gradlew jacocoAggregatedVerification` (CI `check` job) |
+
+Local commands:
+
+```
+./gradlew check -x :integration-tests:test        # unit/contract suites + per-module coverage gates
+./gradlew jacocoAggregatedReport                  # merged XML+HTML at build/reports/jacoco/
+./gradlew jacocoAggregatedVerification            # repo-wide 80/70 floor
+./gradlew :integration-tests:postgresIntegrationTest   # blocking Postgres/DuckDB container suite
+./gradlew :integration-tests:test                 # full container suite incl. Oracle-Free (resourced host)
+```
+
+CI (`.github/workflows/ci.yml`): the `check` job enforces every gate above and
+uploads `**/build/reports/jacoco/**` as artifacts; `integration-postgres` is a
+**blocking** PR check; `integration-oracle` stays informational until the
+self-hosted runner exists (hard-gating a known-flaky hosted job would fake the
+assurance this file exists to keep honest).
 
 ## HEL-128 — connection-pool ownership + resource lifecycle (release-blocking)
 

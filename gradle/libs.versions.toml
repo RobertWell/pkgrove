@@ -30,6 +30,9 @@ jdbi3-core = { module = "org.jdbi:jdbi3-core", version.ref = "jdbi" }
 duckdb-jdbc = { module = "org.duckdb:duckdb_jdbc", version.ref = "duckdb" }
 ojdbc11 = { module = "com.oracle.database.jdbc:ojdbc11", version.ref = "ojdbc" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
+# HEL-234: real-savepoint engine for the SavepointPerBatch policy tests —
+# DuckDB (the jdbc module's usual zero-config DB) has no JDBC savepoints.
+h2 = { module = "com.h2database:h2", version = "2.3.230" }
 junit-launcher = { module = "org.junit.platform:junit-platform-launcher" }
 testcontainers-oracle = { module = "org.testcontainers:oracle-free", version.ref = "testcontainers" }
 testcontainers-junit = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
