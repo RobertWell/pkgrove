@@ -40,7 +40,7 @@ tasks.cyclonedxBom {
 // 0.3.0 = first release under the Maven-Central-verified namespace com.pkgrove
 // (HEL-189). 0.2.0 artifacts remain immutable at com.pkgrove.pkgrovekit in the
 // GitLab/GitHub registries; consumers migrate coordinates on upgrade.
-val pkgrovekitRelease = "0.5.0"
+val pkgrovekitRelease = "0.6.0"
 
 /** Short commit sha for `-Pdev` local builds; safe fallback if git is absent so
  *  a dev build never fails on version resolution. Only invoked when `-Pdev` is

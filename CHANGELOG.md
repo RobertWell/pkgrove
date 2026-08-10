@@ -5,6 +5,13 @@ All notable changes to PkgroveKit. Pre-stable: breaking changes may occur in any
 
 ## Unreleased
 
+## 0.6.0 — 2026-08-11
+
+First release carrying the object-storage seam (HEL-236), the same-database
+server-side copy push-down (HEL-224), the enforced module hierarchy (HEL-235),
+the security policy (HEL-259), and the owner-mandated quality gates (HEL-234).
+No breaking API changes for existing 0.5.0 consumers.
+
 - HEL-234 (owner mandate 2026-08-09): **mandatory quality gates** — all
   enforced (thresholds FAIL pipelines), none informational. (1) Changed-code
   coverage: `jacocoDiffCoverageCheck` fails when < 80% of the coverable lines
