@@ -5,7 +5,7 @@
 // (core/jdbc/transfer/dialects) is a SEPARATE, orthogonal concern and is NOT
 // dragged in by the coordination layer.
 dependencies {
-    implementation(platform("com.pkgrove:pkgrovekit-bom:0.5.0"))
+    implementation(platform("com.pkgrove:pkgrovekit-bom:0.6.0"))
     implementation("com.pkgrove:pkgrovekit-narayana")
 }
 extra["requiredModules"] = "pkgrovekit-coordination-api,pkgrovekit-jta,pkgrovekit-narayana"

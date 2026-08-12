@@ -6,7 +6,7 @@
 // (spring !-> quarkus), and no coordination module arrives. Spring itself is
 // compileOnly in the starter — the consumer's Boot app supplies it.
 dependencies {
-    implementation(platform("com.pkgrove:pkgrovekit-bom:0.5.0"))
+    implementation(platform("com.pkgrove:pkgrovekit-bom:0.6.0"))
     implementation("com.pkgrove:pkgrovekit-spring-boot-starter")
     implementation("com.pkgrove:pkgrovekit-postgres")
 }

@@ -4,7 +4,7 @@
 // Pulls only the coordination API + saga interpreter — explicitly NO JTA, NO
 // Narayana, and none of the data-access spine.
 dependencies {
-    implementation(platform("com.pkgrove:pkgrovekit-bom:0.5.0"))
+    implementation(platform("com.pkgrove:pkgrovekit-bom:0.6.0"))
     implementation("com.pkgrove:pkgrovekit-saga")
 }
 extra["requiredModules"] = "pkgrovekit-coordination-api,pkgrovekit-saga"

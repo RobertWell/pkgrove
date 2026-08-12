@@ -5,7 +5,7 @@
 // touches JdbiTransfer (e.g. AuditPatchX) may exclude pkgrovekit-transfer — see
 // docs/scenarios.md. No dialect adapters, no coordination, no framework.
 dependencies {
-    implementation(platform("com.pkgrove:pkgrovekit-bom:0.5.0"))
+    implementation(platform("com.pkgrove:pkgrovekit-bom:0.6.0"))
     implementation("com.pkgrove:pkgrovekit-jdbi")
 }
 extra["requiredModules"] = "pkgrovekit-core,pkgrovekit-jdbc,pkgrovekit-transfer,pkgrovekit-jdbi"

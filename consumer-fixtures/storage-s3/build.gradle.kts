@@ -4,7 +4,7 @@
 // storage API + the AWS-SDK-v2 adapter (s3 + its transport only — never the
 // full SDK surface), and nothing from coordination or the frameworks.
 dependencies {
-    implementation(platform("com.pkgrove:pkgrovekit-bom:0.5.0"))
+    implementation(platform("com.pkgrove:pkgrovekit-bom:0.6.0"))
     implementation("com.pkgrove:pkgrovekit-transfer")
     implementation("com.pkgrove:pkgrovekit-storage-s3")
 }

@@ -6,7 +6,7 @@
 // Quarkus/CDI/Agroal are compileOnly in the adapter — the Quarkus app supplies
 // them (and the Oracle JDBC driver).
 dependencies {
-    implementation(platform("com.pkgrove:pkgrovekit-bom:0.5.0"))
+    implementation(platform("com.pkgrove:pkgrovekit-bom:0.6.0"))
     implementation("com.pkgrove:pkgrovekit-quarkus")
     implementation("com.pkgrove:pkgrovekit-oracle")
 }

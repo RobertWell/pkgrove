@@ -3,7 +3,7 @@
 // Pulls the transfer engine (+ coroutines) and the postgres dialect, but never
 // oracle/duckdb, jdbi, coordination, or any framework.
 dependencies {
-    implementation(platform("com.pkgrove:pkgrovekit-bom:0.5.0"))
+    implementation(platform("com.pkgrove:pkgrovekit-bom:0.6.0"))
     implementation("com.pkgrove:pkgrovekit-postgres")
     implementation("com.pkgrove:pkgrovekit-transfer")
 }
