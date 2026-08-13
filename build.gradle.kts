@@ -590,12 +590,16 @@ configure(subprojects.filter { it.name in mutationThresholds.keys }) {
     // loudly (observed live 2026-08-09). Pin the launcher to the same 21
     // toolchain the code is compiled with so the gate measures the suite, not
     // whichever JVM launched Gradle.
+    // Resolve the launcher HERE, where `this` is the Project. Inside
+    // configureEach the receiver is the Task, whose extension container holds
+    // only ExtraPropertiesExtension — so looking the service up in there fails
+    // task creation outright ("Extension of type 'JavaToolchainService' does
+    // not exist"), which is how this gate never actually ran.
+    val pitLauncher = extensions.getByType<JavaToolchainService>().launcherFor {
+        languageVersion.set(JavaLanguageVersion.of(21))
+    }
     tasks.withType<info.solidsoft.gradle.pitest.PitestTask>().configureEach {
-        javaLauncher.set(
-            extensions.getByType<JavaToolchainService>().launcherFor {
-                languageVersion.set(JavaLanguageVersion.of(21))
-            },
-        )
+        javaLauncher.set(pitLauncher)
     }
     // HEL-124 flow: a cheap task that resolves the PIT tool classpath so
     // dependency locking (--write-locks) and the GitLab-generated verification

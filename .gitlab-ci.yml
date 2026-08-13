@@ -26,7 +26,24 @@ verification-metadata:
   stage: verify
   # same warm image the AuditPatchX backend job uses (JDK 21; wrapper supplies Gradle)
   image: maven:3.9-eclipse-temurin-21
+  # Docker is REQUIRED here, not optional. HEL-236 put MinIO testcontainer ITs
+  # in :pkgrovekit-storage-s3:test — a published module's normal test task, which
+  # the `-x :integration-tests:test` exclusion below never covered. Without a
+  # daemon those ITs skip and the module's coverage falls to 0.27 against an
+  # enforced 0.80 gate, so this job cannot pass Docker-less either way. Same
+  # privileged-runner dind setup as integration-oracle above.
+  tags:
+    - privileged
+  services:
+    - name: docker:27-dind
+      alias: docker
+      command: ["--dns", "8.8.8.8", "--dns", "8.8.4.4"]
+      variables:
+        DOCKER_TLS_CERTDIR: ""
   variables:
+    DOCKER_HOST: tcp://localhost:2375
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_DRIVER: overlay2
     GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle-home"
     GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx1g"
   cache:

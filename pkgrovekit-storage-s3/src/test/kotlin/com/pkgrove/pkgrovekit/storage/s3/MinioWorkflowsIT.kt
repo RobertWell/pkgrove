@@ -20,6 +20,8 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assumptions
+import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import java.math.BigDecimal
@@ -34,10 +36,23 @@ import java.time.Duration
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class MinioWorkflowsIT {
 
-    private val store = MinioSupport.newStore()
+    @BeforeAll
+    fun dockerOrSkip() = Assumptions.assumeTrue(
+        MinioSupport.dockerAvailable,
+        "Docker unavailable — MinIO ITs skipped here; they run for real in the dind-backed CI jobs",
+    )
+
+    // LAZY on purpose: an eager field initialiser starts the container during
+    // class CONSTRUCTION, i.e. before @BeforeAll can skip — which is why the
+    // Docker assumption alone did not stop the no-daemon failure.
+    private val store by lazy { MinioSupport.newStore() }
 
     @AfterAll
-    fun tearDown() = store.close()
+    fun tearDown() {
+        // Only close what was actually opened — touching `store` here would
+        // instantiate it and re-create the very failure this guards against.
+        if (MinioSupport.dockerAvailable) store.close()
+    }
 
     private val schema = Schema(
         listOf(
