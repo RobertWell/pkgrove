@@ -43,7 +43,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: gradle/actions/setup-gradle@v3
+      - uses: gradle/actions/setup-gradle@v6
       # Policy guard: refuse to publish a mutable version. `-Pdev` and any stray
       # `-SNAPSHOT` produce non-immutable coordinates and must never reach the
       # registry — fail the release here, loudly, before any artifact is built.
@@ -69,7 +69,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: gradle/actions/setup-gradle@v3
+      - uses: gradle/actions/setup-gradle@v6
       # `check` already ran (and passed) in the gate job; publish only deploys.
       - run: ./gradlew publish
         env:

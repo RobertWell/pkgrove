@@ -23,7 +23,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: gradle/actions/setup-gradle@v3
+      - uses: gradle/actions/setup-gradle@v6
       # HEL-234: `check` now carries the ENFORCED per-module JaCoCo gates
       # (jacocoTestCoverageVerification rides every module's check); the two
       # aggregated tasks add the repository-wide report + 80/70 floor.
@@ -69,7 +69,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: gradle/actions/setup-gradle@v3
+      - uses: gradle/actions/setup-gradle@v6
       # Dependency verification (HEL-124) is generated over the release/publish
       # graph; heavy testcontainer test-RUNTIME deps are deliberately not
       # pinned there (they never ship in a published artifact) — lenient here.
@@ -97,7 +97,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: gradle/actions/setup-gradle@v3
+      - uses: gradle/actions/setup-gradle@v6
       - run: ./gradlew --dependency-verification lenient :integration-tests:test --tests '*Oracle*'
       - uses: actions/upload-artifact@v4
         if: always()
