@@ -1,0 +1,41 @@
+# HEL-259. Dependabot *version updates* are configured by THIS file — only alerts
+# and security-updates come from repo settings, which is why "it's a settings
+# toggle" was wrong and this file's absence left the control unimplemented.
+#
+# Scope note: the Gradle ecosystem here covers build.gradle.kts and the version
+# catalog (gradle/libs.versions.toml). Dependency verification is enforced
+# (gradle/verification-metadata.xml), so a Dependabot bump that changes a
+# coordinate WILL fail the build until the metadata is regenerated — that is the
+# intended behaviour, not a bug: an unverified artifact must not merge silently.
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:00"
+      timezone: Asia/Taipei
+    open-pull-requests-limit: 5
+    labels: [dependencies, security]
+    commit-message:
+      prefix: "deps"
+      include: scope
+    groups:
+      # One PR per ecosystem-wide bump keeps verification-metadata regeneration
+      # to a single review rather than N conflicting ones.
+      all-gradle:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:00"
+      timezone: Asia/Taipei
+    open-pull-requests-limit: 3
+    labels: [dependencies, ci]
+    commit-message:
+      prefix: "ci"

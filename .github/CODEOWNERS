@@ -1,0 +1,17 @@
+# HEL-259. Default owner for everything; CODEOWNERS only takes effect as a
+# REQUIRED review once "Require review from Code Owners" is enabled on the
+# protected branch — that half is a repo setting and is tracked in
+# docs/security-controls.md.
+* @RobertWell
+
+# Security- and supply-chain-critical paths called out explicitly. These decide
+# what is published and what is trusted, so a change here should never ride
+# along unnoticed in a large PR:
+/SECURITY.md                          @RobertWell
+/.github/                             @RobertWell
+/gradle/verification-metadata.xml     @RobertWell
+/gradle/libs.versions.toml            @RobertWell
+/build.gradle.kts                     @RobertWell
+/settings.gradle.kts                  @RobertWell
+/docs/RELEASING.md                    @RobertWell
+/docs/security-controls.md            @RobertWell

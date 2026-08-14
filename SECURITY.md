@@ -14,8 +14,8 @@ overwritten. Fixes ship as a **new** version, not a re-tag.
 
 | Version line | Coordinates | Supported |
 |---|---|---|
-| `0.5.x` (current) | `com.pkgrove:pkgrovekit-*` | ✅ Security fixes released as a new `0.x` version |
-| `0.3.x` – `0.4.x` | `com.pkgrove:pkgrovekit-*` | ⚠️ Please upgrade to the latest `0.5.x`; fixes are not backported |
+| `0.6.x` (current) | `com.pkgrove:pkgrovekit-*` | ✅ Security fixes released as a new `0.x` version |
+| `0.3.x` – `0.5.x` | `com.pkgrove:pkgrovekit-*` | ⚠️ Please upgrade to the latest `0.6.x`; fixes are not backported |
 | `0.2.0` | `com.pkgrove.pkgrovekit:*` (legacy namespace) | ❌ Unsupported — migrate coordinates to `com.pkgrove:*` and upgrade |
 | `rowrelay-*` `0.3.0` | `com.pkgrove:rowrelay-*` (former name) | ❌ Unsupported — migrate to `pkgrovekit-*` |
 
@@ -48,7 +48,7 @@ wait for the private channel before sharing specifics.
 ### What a useful report contains
 
 - affected module(s) and Maven coordinate(s) + version(s) (e.g.
-  `com.pkgrove:pkgrovekit-jdbc:0.5.0`);
+  `com.pkgrove:pkgrovekit-jdbc:0.6.0`);
 - the version of PkgroveKit you tested against and the environment (JDK, driver,
   database, framework adapter if any);
 - a description of the vulnerability and its impact;
