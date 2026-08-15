@@ -1,5 +1,6 @@
 package com.pkgrove.pkgrovekit.it
 
+import java.time.Duration
 import com.pkgrove.pkgrovekit.core.OperationReport
 import com.pkgrove.pkgrovekit.oracle.OracleDialect
 import com.pkgrove.pkgrovekit.transfer.Transfer
@@ -46,6 +47,8 @@ class OracleServerSideCopyIT {
     fun startOracle() {
         oracle = OracleContainer(DockerImageName.parse("gvenzl/oracle-free:23-slim-faststart"))
             .withDatabaseName("testdb").withUsername("test").withPassword("test")
+            // Same contention-tolerant startup window as the sibling Oracle ITs.
+            .withStartupTimeout(Duration.ofMinutes(6)).withStartupAttempts(2)
         oracle.start()
         conn = DriverManager.getConnection(oracle.jdbcUrl, oracle.username, oracle.password)
         conn.createStatement().use { st ->

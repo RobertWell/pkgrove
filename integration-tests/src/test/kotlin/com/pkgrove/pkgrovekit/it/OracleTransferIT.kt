@@ -1,5 +1,6 @@
 package com.pkgrove.pkgrovekit.it
 
+import java.time.Duration
 import com.pkgrove.pkgrovekit.duckdb.DuckDbDialect
 import com.pkgrove.pkgrovekit.jdbc.JdbcBatchWriter
 import com.pkgrove.pkgrovekit.jdbc.JdbcReader
@@ -44,6 +45,8 @@ class OracleTransferIT {
     fun startOracle() {
         oracle = OracleContainer(DockerImageName.parse("gvenzl/oracle-free:23-slim-faststart"))
             .withDatabaseName("testdb").withUsername("test").withPassword("test")
+            // Same contention-tolerant startup window as the sibling Oracle ITs.
+            .withStartupTimeout(Duration.ofMinutes(6)).withStartupAttempts(2)
         oracle.start()
         oconn = DriverManager.getConnection(oracle.jdbcUrl, oracle.username, oracle.password)
         oconn.createStatement().use { st ->

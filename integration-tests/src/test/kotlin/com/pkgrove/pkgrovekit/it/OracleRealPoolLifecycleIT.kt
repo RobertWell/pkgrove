@@ -1,5 +1,6 @@
 package com.pkgrove.pkgrovekit.it
 
+import java.time.Duration
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import com.pkgrove.pkgrovekit.jdbc.DatabaseKey
@@ -55,6 +56,10 @@ class OracleRealPoolLifecycleIT {
     fun start() {
         oracle = OracleContainer(DockerImageName.parse("gvenzl/oracle-free:23-slim-faststart"))
             .withUsername("test").withPassword("test")
+            // DB-ready wait widened: the shared privileged runner also hosts dind image
+            // builds and local testcontainers runs; under that contention faststart can
+            // exceed the module default (pipeline 1590 — all three Oracle ITs timed out).
+            .withStartupTimeout(Duration.ofMinutes(6)).withStartupAttempts(2)
         oracle.start()
         pool = HikariDataSource(HikariConfig().apply {
             jdbcUrl = oracle.jdbcUrl
