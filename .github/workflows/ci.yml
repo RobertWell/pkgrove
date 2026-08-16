@@ -50,7 +50,7 @@ jobs:
       - name: Generate release evidence (HEL-234)
         if: always()
         run: bash scripts/gen-release-evidence.sh build/release-evidence.md
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: check-reports
@@ -78,7 +78,7 @@ jobs:
       # graph; heavy testcontainer test-RUNTIME deps are deliberately not
       # pinned there (they never ship in a published artifact) — lenient here.
       - run: ./gradlew --dependency-verification lenient :integration-tests:postgresIntegrationTest
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: integration-postgres-reports
@@ -103,7 +103,7 @@ jobs:
           java-version: '21'
       - uses: gradle/actions/setup-gradle@d9c87d481d55275bb5441eef3fe0e46805f9ef70 # v3
       - run: ./gradlew --dependency-verification lenient :integration-tests:test --tests '*Oracle*'
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: integration-oracle-reports
