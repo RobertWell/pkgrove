@@ -21,7 +21,7 @@ spring-boot = "3.5.14"
 # HEL-236: S3-compatible object storage adapter — AWS SDK for Java 2.x, s3
 # module only (never the full SDK BOM surface).
 awssdk = "2.51.3"
-spring = "6.2.19"
+spring = "7.0.8"
 quarkus = "3.21.1"
 cdi-api = "4.0.1"
 mp-config-api = "3.1"
