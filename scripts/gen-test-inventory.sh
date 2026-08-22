@@ -50,6 +50,12 @@ if [[ -f "$MATRIX" ]]; then
       missing=$((missing+1))
     fi
   done
-  [[ $missing -eq 0 ]] && echo "drift guard: OK (every matrix-referenced class exists in source)"
-  [[ $missing -gt 0 ]] && { echo "drift guard FAILED: $missing missing" >&2; exit 1; }
+  if [[ $missing -gt 0 ]]; then
+    echo "drift guard FAILED: $missing missing" >&2
+    exit 1
+  fi
+  # NOTE: this must stay an if/else, not `[[ cond ]] && cmd` — a trailing
+  # AND-list whose condition is false exits the script with status 1, which
+  # made this step fail CI on every SUCCESSFUL drift check.
+  echo "drift guard: OK (every matrix-referenced class exists in source)"
 fi
