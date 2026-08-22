@@ -111,6 +111,27 @@ every security run and before every publish.
 4. If no upstream fix exists, document mitigation and (only with approval)
    register a time-boxed exception.
 
+## External verification log (unauthenticated probes — what CAN be proven from outside)
+
+2026-08-22 (HEL-259 review follow-up; anonymous GitHub API against the public repo):
+
+| Control | Probe | Result |
+|---|---|---|
+| Private vulnerability reporting | `GET /repos/RobertWell/pkgrove/private-vulnerability-reporting` | **`{"enabled": false}` — OFF; owner toggle required** |
+| Branch protection on `main` | `GET /repos/RobertWell/pkgrove/branches/main` → `.protected` | **`false` — no required checks; owner toggle required** |
+| Repository advisories | `GET /repos/RobertWell/pkgrove/security-advisories` | `[]` (none published; drill covered by `security-response-tabletop.md`) |
+| Actions gates at HEAD | `GET /actions/runs` | codeql ✅; **`security` was ❌ (CVE-2025-67030 + 4 Spring CVEs in locked graphs) — fixed in this revision, see below** |
+
+Dependabot alerts / secret scanning / dependency-graph state and alert
+recipients are not readable anonymously — those five checkboxes below remain
+owner-verified only.
+
+Gate repair shipped with this log: `plexus-utils` forced to 3.6.1 in
+`integration-tests-quarkus` (CVE-2025-67030), Spring Boot 3.3.5 → 3.5.14 and
+Spring 6.1.14 → 6.2.19 in the catalog (CVE-2025-22235, CVE-2026-40973 — no fix
+existed on the 3.3.x line, CVE-2025-41249, CVE-2026-41850), lockfiles +
+verification metadata regenerated, blocking scan exit 0 locally.
+
 ## Owner checklist — repository settings (cannot be set from the repo)
 
 These are GitHub *settings*, requiring repo admin in the UI/API. They cannot be

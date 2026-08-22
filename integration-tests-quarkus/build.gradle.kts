@@ -21,3 +21,15 @@ dependencies {
     testImplementation(libs.quarkus.junit5)
     testImplementation(libs.junit.jupiter)
 }
+
+// CVE-2025-67030 (HEL-259 gate): the Quarkus 3.21.1 BOM resolves transitive
+// org.codehaus.plexus:plexus-utils 3.5.1 (directory traversal in extractFile).
+// This module is test-only and never published, but the security gate scans
+// the LOCKED graph and a fixed line exists — force it rather than register a
+// .trivyignore exception. enforcedPlatform outranks ordinary constraints, so
+// resolutionStrategy.force is required here. Drop when the BOM catches up.
+configurations.all {
+    resolutionStrategy {
+        force("org.codehaus.plexus:plexus-utils:3.6.1")
+    }
+}
