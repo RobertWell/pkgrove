@@ -28,7 +28,7 @@ dependencies {
 // the LOCKED graph and a fixed line exists — force it rather than register a
 // .trivyignore exception. enforcedPlatform outranks ordinary constraints, so
 // resolutionStrategy.force is required here. Drop when the BOM catches up.
-configurations.all {
+configurations.configureEach {
     resolutionStrategy {
         force("org.codehaus.plexus:plexus-utils:3.6.1")
     }

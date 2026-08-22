@@ -24,6 +24,13 @@ jacoco {
 // distinguished by CycloneDX component scopes in the output.
 tasks.cyclonedxBom {
     setIncludeConfigs(listOf("runtimeClasspath"))
+    // The IT modules are never published, and integration-tests-quarkus cannot
+    // be swept here at all: Quarkus injects its conditional *-dev artifacts
+    // only when dev-mode tasks are in the graph, so a bare cyclonedxBom
+    // resolution disagrees with the module's lock state and fails the build
+    // (observed red on main since 2026-08-15). Skipping matches the
+    // "publishable modules" intent this block already documents.
+    setSkipProjects(listOf("integration-tests", "integration-tests-quarkus"))
     setProjectType("library")
     setDestination(project.file("build/sbom"))
     setOutputFormat("all")   // JSON + XML
