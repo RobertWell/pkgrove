@@ -88,6 +88,44 @@ configure(subprojects.filter { it.name != bomModule }) {
         lockAllConfigurations()
     }
 
+    // The ONLY correct way to regenerate those lockfiles. Use:
+    //
+    //     ./gradlew --write-locks resolveAndLockAll
+    //
+    // and never `--write-locks <some other task>`. `--write-locks` rewrites a
+    // lockfile from what the invoked tasks actually RESOLVED, so any
+    // configuration the task graph does not touch is silently DROPPED from the
+    // lock — not left alone, dropped.
+    //
+    // That is not hypothetical: regenerating with `--write-locks assemble` (this
+    // repo had no lock task, so it was improvised) deleted
+    //
+    //   org.jetbrains.dokka:javadoc-plugin:1.9.20      =dokkaJavadocPlugin
+    //   org.jetbrains.dokka:kotlin-as-java-plugin:1.9.20=dokkaJavadocPlugin
+    //   com.soywiz.korlibs.korte:korte-jvm:4.0.10      =dokkaJavadocPlugin
+    //
+    // because `assemble` never resolves `dokkaJavadocPlugin`. The build stayed
+    // green — and `dokkaJavadoc` then failed with a jackson NoSuchMethodError
+    // that looks nothing like "your lockfile lost three entries". Since
+    // `dokkaJavadocJar` is a PUBLISH artifact (Central requires a javadoc jar),
+    // that silently broke releasing.
+    //
+    // This task resolves every resolvable configuration, so the lock it writes
+    // is complete by construction.
+    tasks.register("resolveAndLockAll") {
+        group = "verification"
+        description = "Resolves EVERY configuration so --write-locks rewrites complete lockfiles"
+        notCompatibleWithConfigurationCache("filters configurations at execution time")
+        doFirst {
+            require(gradle.startParameter.isWriteDependencyLocks) {
+                "resolveAndLockAll is only meaningful with --write-locks"
+            }
+        }
+        doLast {
+            configurations.filter { it.isCanBeResolved }.forEach { it.resolve() }
+        }
+    }
+
     // HEL-259: floors for TRANSITIVE dependencies carrying known CVEs.
     //
     // These are not declared anywhere in this build — they arrive through other
@@ -112,6 +150,33 @@ configure(subprojects.filter { it.name != bomModule }) {
     // Floors, not pins: `require` lets a consumer or a future transitive raise
     // them further. Revisit when the upstreams move; the lockfiles record what
     // actually resolved.
+    // NOT forced into every configuration — tried, and it broke the release.
+    //
+    // The four coordinates below survive in `dokka*` and `pitest` classpaths,
+    // which do not extend `implementation`, so these constraints cannot reach
+    // them. The obvious next step is
+    // `configurations.configureEach { resolutionStrategy { force(...) } }`,
+    // following the plexus-utils precedent in integration-tests-quarkus.
+    //
+    // That was tried and REVERTED. With the forces in place,
+    // `:pkgrovekit-coordination-api:dokkaJavadoc` fails:
+    //     'void com.fasterxml.jackson.databind.type.TypeFactory
+    //        .<init>(com.fasterxml.jackson.databind.util.LRUMap)'
+    // Isolated by removing only the force block: BUILD SUCCESSFUL. Dokka 1.9.20
+    // is binary-sensitive to the classpath it was built against, and
+    // `dokkaJavadocJar` is a PUBLISH artifact — Central requires a javadoc jar.
+    //
+    // So the trade is explicit: forcing them trades three MEDIUM advisories in a
+    // build tool that is never published, for a release that cannot be cut. The
+    // advisories are accepted instead, WITH EVIDENCE:
+    //   CVE-2025-48924  commons-lang3    (dokka* + pitest)
+    //   CVE-2026-54515 / CVE-2026-59889 / GHSA-mhm7-754m-9p8w
+    //                   jackson-databind (dokka* only)
+    //   CVE-2026-71497  jsoup            (dokka* only)
+    // Verified per coordinate against every lockfile: outside those
+    // configurations they do not appear, so no consumer resolves them. Revisit
+    // when Dokka updates — a force here disappears the day it does.
+
     dependencies {
         constraints {
             add("implementation", "org.apache.commons:commons-lang3") { version { require("3.18.0") } }
@@ -120,6 +185,7 @@ configure(subprojects.filter { it.name != bomModule }) {
             add("implementation", "org.jsoup:jsoup") { version { require("1.23.1") } }
         }
     }
+
 
     extensions.configure<JavaPluginExtension> {
         toolchain {
