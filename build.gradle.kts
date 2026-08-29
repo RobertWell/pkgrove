@@ -748,7 +748,7 @@ configure(subprojects.filter { it.name.startsWith("pkgrovekit-") }) {
         // exception — force the fixed line on the dokka configurations only.
         configurations.matching { it.name.startsWith("dokka") }.configureEach {
             resolutionStrategy {
-                force("com.fasterxml.jackson.core:jackson-databind:2.18.8")
+                force("com.fasterxml.jackson.core:jackson-databind:2.22.2")
             }
         }
         extensions.configure<JavaPluginExtension> {
