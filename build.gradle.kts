@@ -88,6 +88,39 @@ configure(subprojects.filter { it.name != bomModule }) {
         lockAllConfigurations()
     }
 
+    // HEL-259: floors for TRANSITIVE dependencies carrying known CVEs.
+    //
+    // These are not declared anywhere in this build — they arrive through other
+    // libraries — so bumping libs.versions.toml cannot reach them. Constraints
+    // raise the resolved floor without adding a dependency: a module that never
+    // pulls jsoup still does not get jsoup.
+    //
+    // Each line is a published advisory with a fix, found by scanning the
+    // committed lockfiles (the same input the CI scanner reads):
+    //
+    //   CVE-2025-48924  commons-lang3  3.12.0 -> 3.18.0
+    //   CVE-2026-54515  jackson-databind 2.18.8 -> 2.18.9  (also CVE-2026-59889,
+    //                   GHSA-mhm7-754m-9p8w — one bump clears all three)
+    //   CVE-2026-64607  httpclient5    5.6.2  -> 5.6.3
+    //   CVE-2026-71497  jsoup          1.16.1 -> 1.23.1
+    //
+    // All MEDIUM, which is why CI never blocked: security.yml gates at
+    // HIGH,CRITICAL and reports the rest non-blocking. That gate is correct and
+    // is left alone — this fixes the findings rather than lowering the bar to
+    // make them fail, and the full-severity report stays the place they surface.
+    //
+    // Floors, not pins: `require` lets a consumer or a future transitive raise
+    // them further. Revisit when the upstreams move; the lockfiles record what
+    // actually resolved.
+    dependencies {
+        constraints {
+            add("implementation", "org.apache.commons:commons-lang3") { version { require("3.18.0") } }
+            add("implementation", "com.fasterxml.jackson.core:jackson-databind") { version { require("2.18.9") } }
+            add("implementation", "org.apache.httpcomponents.client5:httpclient5") { version { require("5.6.3") } }
+            add("implementation", "org.jsoup:jsoup") { version { require("1.23.1") } }
+        }
+    }
+
     extensions.configure<JavaPluginExtension> {
         toolchain {
             languageVersion.set(JavaLanguageVersion.of(21))
