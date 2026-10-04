@@ -9,6 +9,9 @@ import com.pkgrove.pkgrovekit.operation.Json
 import com.pkgrove.pkgrovekit.operation.OperationRegistry
 import com.pkgrove.pkgrovekit.operation.ParityCheck
 import com.pkgrove.pkgrovekit.operation.Surface
+import com.pkgrove.pkgrovekit.operation.SurfaceContract
+import com.pkgrove.pkgrovekit.operation.mcp.asSurfaceAnswer
+import com.pkgrove.pkgrovekit.operation.rest.asSurfaceAnswer
 import com.pkgrove.pkgrovekit.operation.mcp.McpCallResult
 import com.pkgrove.pkgrovekit.operation.mcp.McpDispatcher
 import com.pkgrove.pkgrovekit.operation.nested
@@ -126,6 +129,7 @@ class OperationSurfacesTest {
         val mcpBody = Json.parse((viaMcp as McpCallResult.Ok).content) as Json.Obj
 
         // Same plan, same title, same viewer — the agent acts for alice.
+        SurfaceContract.assertAgree("plan.get", viaRest.asSurfaceAnswer(), viaMcp.asSurfaceAnswer())
         assertEquals(restBody, mcpBody)
         assertEquals("alice", restBody.string("viewer"))
 
@@ -171,13 +175,17 @@ class OperationSurfacesTest {
         assertEquals(400, viaRest.status)
         assertEquals(400, (viaMcp as McpCallResult.Error).httpStatus)
 
-        // The SAME code/field/message triple, in the same order, from one validator.
-        val restDetails = details(Json.parse(viaRest.body) as Json.Obj)
-        val mcpDetails = details(Json.parse(viaMcp.content) as Json.Obj)
-        assertEquals(restDetails, mcpDetails)
+        // The library's own parity utility, used exactly as a consumer would:
+        // same status, same error code, same (field, code) details, in order.
+        SurfaceContract.assertAgree(
+            "actual.set with an invalid state and a 3-decimal amount",
+            rest = viaRest.asSurfaceAnswer(),
+            mcp = viaMcp.asSurfaceAnswer(),
+        )
+        // ...and the details really are the two the validator declared.
         assertEquals(
             listOf("state|one_of", "amount|scale"),
-            restDetails.map { "${it.first}|${it.second}" },
+            details(Json.parse(viaRest.body) as Json.Obj).map { "${it.first}|${it.second}" },
         )
         assertTrue(domain.invocations.isEmpty())
     }

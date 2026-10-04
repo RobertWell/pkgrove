@@ -298,6 +298,17 @@ class RestDispatcherTest {
     }
 
     @Test
+    fun `a response normalises to a SurfaceAnswer for the parity utility`() {
+        val ok = dispatcher().dispatch(RestRequest(HttpMethod.GET, "/v1/plans/p-1", credential = REST_TOKEN))
+        assertEquals(200, ok.asSurfaceAnswer().status)
+        assertEquals("p-1", (ok.asSurfaceAnswer().payload as Json.Obj).string("planId"))
+
+        val failed = dispatcher().dispatch(RestRequest(HttpMethod.GET, "/v1/plans/absent", credential = REST_TOKEN))
+        assertEquals(404, failed.asSurfaceAnswer().status)
+        assertEquals("not_found", (failed.asSurfaceAnswer().payload as Json.Obj).string("error"))
+    }
+
+    @Test
     fun `the validation detail renderer is reusable by a host`() {
         val rendered = listOf(ValidationError("state", "one_of", "must be A or B")).toJson()
         assertEquals(

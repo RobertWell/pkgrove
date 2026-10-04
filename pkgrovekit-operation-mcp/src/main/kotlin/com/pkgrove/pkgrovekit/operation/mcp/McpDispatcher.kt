@@ -11,6 +11,7 @@ import com.pkgrove.pkgrovekit.operation.OperationPipeline
 import com.pkgrove.pkgrovekit.operation.OperationRegistry
 import com.pkgrove.pkgrovekit.operation.OperationStatus
 import com.pkgrove.pkgrovekit.operation.Surface
+import com.pkgrove.pkgrovekit.operation.SurfaceAnswer
 import com.pkgrove.pkgrovekit.operation.call
 import com.pkgrove.pkgrovekit.operation.httpStatus
 import com.pkgrove.pkgrovekit.operation.renderOutput
@@ -207,4 +208,18 @@ public class McpDispatcher(
             content = Json.write(wire.toJson()),
         )
     }
+}
+
+/**
+ * This result as a normalised [SurfaceAnswer], for
+ * [com.pkgrove.pkgrovekit.operation.SurfaceContract] — the parity test utility.
+ *
+ * A successful tool call carries no status of its own, so it normalises to 200
+ * for comparison; a REST `201` on a create therefore shows up as a status
+ * difference, which is correct: the HTTP envelope legitimately differs, and a
+ * parity test over a create compares the payloads with that in mind.
+ */
+public fun McpCallResult.asSurfaceAnswer(): SurfaceAnswer = when (this) {
+    is McpCallResult.Ok -> SurfaceAnswer.of(200, content)
+    is McpCallResult.Error -> SurfaceAnswer.of(httpStatus, content)
 }

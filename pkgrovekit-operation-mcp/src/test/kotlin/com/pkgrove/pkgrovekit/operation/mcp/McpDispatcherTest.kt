@@ -269,6 +269,17 @@ class McpDispatcherTest {
     }
 
     @Test
+    fun `a result normalises to a SurfaceAnswer for the parity utility`() {
+        val ok = dispatcher().call("get_plan", """{"planId":"p-1"}""", agent)
+        assertEquals(200, ok.asSurfaceAnswer().status)
+        assertEquals("p-1", (ok.asSurfaceAnswer().payload as Json.Obj).string("planId"))
+
+        val failed = dispatcher().call("get_plan", """{"planId":"absent"}""", agent)
+        assertEquals(404, failed.asSurfaceAnswer().status)
+        assertEquals("not_found", (failed.asSurfaceAnswer().payload as Json.Obj).string("error"))
+    }
+
+    @Test
     fun `the nested accessor is reachable from the adapter module`() {
         assertEquals(
             "p-1",

@@ -34,6 +34,7 @@ declares none does not build.
 - [Quarkus wiring](#quarkus-wiring)
 - [Coexisting with a legacy MCP registry](#coexisting-with-a-legacy-mcp-registry)
 - [The parity check in CI](#the-parity-check-in-ci)
+- [Proving the surfaces agree, in your own tests](#proving-the-surfaces-agree-in-your-own-tests)
 - [Gallery descriptors](#gallery-descriptors)
 - [What this layer deliberately does not do](#what-this-layer-deliberately-does-not-do)
 
@@ -526,6 +527,39 @@ It reports:
 
 The `policy` parameter answers *"if we tighten the rules, what stops being
 agent-callable?"* without first shipping a build that refuses to start.
+
+## Proving the surfaces agree, in your own tests
+
+`ParityCheck` answers "is the right set of operations on the right surfaces?".
+`SurfaceContract` answers the other half: "does one operation ANSWER the same on
+both?" — the check that catches a decoder or an error mapping drifting apart.
+
+```kotlin
+@Test
+fun `a bad amount reads the same on both surfaces`() {
+    val viaRest = rest.dispatch(
+        RestRequest(HttpMethod.POST, "/v1/plans/p-1/items/i-2/actual", body = """{"state":"NOPE"}"""),
+    )
+    val viaMcp = mcp.call("set_item_actual", """{"planId":"p-1","itemId":"i-2","state":"NOPE"}""", session)
+
+    SurfaceContract.assertAgree(
+        "actual.set with an invalid state",
+        rest = viaRest.asSurfaceAnswer(),
+        mcp = viaMcp.asSurfaceAnswer(),
+    )
+}
+```
+
+It compares the status, the error `code`, and each detail's `(field, code)` — and
+deliberately NOT the prose, so a reworded message is not a false alarm while a
+changed code is caught. On success it compares the whole payload: the output is
+the contract.
+
+`asSurfaceAnswer()` is a one-line bridge on `RestResponse` and `McpCallResult`;
+`SurfaceContract` itself lives in core and takes normalised answers, so it
+depends on neither adapter. Note that a REST create answers 201 while a tool call
+has no status of its own and normalises to 200 — an intended envelope difference,
+so compare creates with that in mind.
 
 ## Gallery descriptors
 

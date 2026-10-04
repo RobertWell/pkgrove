@@ -12,6 +12,7 @@ import com.pkgrove.pkgrovekit.operation.RestBinding
 import com.pkgrove.pkgrovekit.operation.RestPathTemplate
 import com.pkgrove.pkgrovekit.operation.template
 import com.pkgrove.pkgrovekit.operation.Surface
+import com.pkgrove.pkgrovekit.operation.SurfaceAnswer
 import com.pkgrove.pkgrovekit.operation.ValidationError
 import com.pkgrove.pkgrovekit.operation.call
 import com.pkgrove.pkgrovekit.operation.renderOutput
@@ -167,6 +168,12 @@ public class RestDispatcher(
         return Json.Obj(merged)
     }
 }
+
+/**
+ * This response as a normalised [SurfaceAnswer], for
+ * [com.pkgrove.pkgrovekit.operation.SurfaceContract] — the parity test utility.
+ */
+public fun RestResponse.asSurfaceAnswer(): SurfaceAnswer = SurfaceAnswer.of(status, body)
 
 /** Validation detail rendering, exposed for a host that keeps its own envelope. */
 public fun List<ValidationError>.toJson(): Json.Arr = Json.arr(
