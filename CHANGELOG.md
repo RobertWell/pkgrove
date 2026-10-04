@@ -5,6 +5,19 @@ All notable changes to PkgroveKit. Pre-stable: breaking changes may occur in any
 
 ## Unreleased
 
+- HEL-616: **security gate green again — Dokka's jackson and FreeMarker
+  raised.** Trivy's HIGH/CRITICAL gate on `main` had been red since 2026-09-28:
+  every module lockfile pinned `jackson-core` / `jackson-databind` 2.18.8
+  (CVE-2026-89407, CVE-2026-89425, CVE-2026-68497, CVE-2026-91776,
+  CVE-2026-91777 — all HIGH) and `org.freemarker:freemarker` 2.3.32
+  (CVE-2026-84939, CRITICAL). All three coordinates resolve only in the
+  `dokka*` configurations (documentation tooling, never on a consumer
+  classpath), so the fix is the existing dokka-scoped force raised to
+  jackson 2.18.11 and FreeMarker 2.3.35 (Dokka 1.9.20 builds its javadoc jars
+  unchanged — verified before relocking), plus the `implementation` CVE floors
+  for jackson-core/databind raised to 2.18.11 for consistency. No runtime
+  dependency changes; no `.trivyignore.yaml` entry. The publish workflow gates
+  on this scan, so this also unblocks the next release.
 - HEL-614: **MinIO test image is built from the GitHub release binary, not
   pulled.** MinIO stopped publishing container images in 2025 — Docker Hub
   `minio/minio` no longer exists, `quay.io/minio/minio` answers 401 and

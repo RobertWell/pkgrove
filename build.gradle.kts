@@ -138,7 +138,8 @@ configure(subprojects.filter { it.name != bomModule }) {
     //
     //   CVE-2025-48924  commons-lang3  3.12.0 -> 3.18.0
     //   CVE-2026-54515  jackson-databind 2.18.8 -> 2.18.9  (also CVE-2026-59889,
-    //                   GHSA-mhm7-754m-9p8w — one bump clears all three)
+    //                   GHSA-mhm7-754m-9p8w — one bump clears all three);
+    //                   raised to 2.18.11 by HEL-616 (four HIGH, 2026-09/10)
     //   CVE-2026-64607  httpclient5    5.6.2  -> 5.6.3
     //   CVE-2026-71497  jsoup          1.16.1 -> 1.23.1
     //
@@ -180,7 +181,10 @@ configure(subprojects.filter { it.name != bomModule }) {
     dependencies {
         constraints {
             add("implementation", "org.apache.commons:commons-lang3") { version { require("3.18.0") } }
-            add("implementation", "com.fasterxml.jackson.core:jackson-databind") { version { require("2.18.9") } }
+            // HEL-616: 2.18.11 clears CVE-2026-89407/89425 (core) and
+            // CVE-2026-68497/91776/91777 (databind) on top of the 2.18.9 set.
+            add("implementation", "com.fasterxml.jackson.core:jackson-core") { version { require("2.18.11") } }
+            add("implementation", "com.fasterxml.jackson.core:jackson-databind") { version { require("2.18.11") } }
             add("implementation", "org.apache.httpcomponents.client5:httpclient5") { version { require("5.6.3") } }
             add("implementation", "org.jsoup:jsoup") { version { require("1.23.1") } }
         }
@@ -751,9 +755,34 @@ configure(subprojects.filter { it.name.startsWith("pkgrovekit-") }) {
         // carries HIGH/CRITICAL advisories. It is BUILD TOOLING (never on a
         // consumer classpath), but the policy prefers an upgrade over an
         // exception — force the fixed line on the dokka configurations only.
+        // HEL-616 (2026-10-04): the 2.18.8 line gained four HIGH advisories
+        // (CVE-2026-89407/89425 jackson-core, CVE-2026-68497/91776/91777
+        // jackson-databind) and Dokka's FreeMarker 2.3.32 a CRITICAL
+        // (CVE-2026-84939); all three coordinates resolve ONLY in dokka*
+        // configurations, so the same dokka-scoped force is the whole fix.
         configurations.matching { it.name.startsWith("dokka") }.configureEach {
             resolutionStrategy {
-                force("com.fasterxml.jackson.core:jackson-databind:2.18.8")
+                force("com.fasterxml.jackson.core:jackson-core:2.18.11")
+                force("com.fasterxml.jackson.core:jackson-databind:2.18.11")
+                force("org.freemarker:freemarker:2.3.35")
+            }
+        }
+        // HEL-616: the dokka* configurations resolve only when a dokka task
+        // EXECUTES, so `dependencies --write-locks` never refreshes their lock
+        // entries, and the Html/Gfm/Jekyll variants cannot execute at all on the
+        // forced classpath (Dokka 1.9.20's HTML plugin is compiled against
+        // `TypeFactory.<init>(LRUMap)`, gone after jackson 2.18.8). Nothing in
+        // this build runs those variants — `dokkaJavadocJar` is the only
+        // published artifact — but their lock entries are what the CVE gate
+        // scans. This task resolves every dokka* configuration without running
+        // Dokka, so `./gradlew --write-locks resolveDokkaLocks` relocks them.
+        tasks.register("resolveDokkaLocks") {
+            group = "verification"
+            description = "Resolve every dokka* configuration so --write-locks can refresh their lock entries (HEL-616)"
+            notCompatibleWithConfigurationCache("resolves configurations at execution time")
+            doLast {
+                configurations.matching { it.name.startsWith("dokka") && it.isCanBeResolved }
+                    .forEach { it.resolve() }
             }
         }
         extensions.configure<JavaPluginExtension> {

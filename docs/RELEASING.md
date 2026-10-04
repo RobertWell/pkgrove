@@ -69,6 +69,23 @@ zip POSTed to the Publisher API:
    (repo1.maven.org propagation lands within minutes of PUBLISHED).
 6. Tag `vX.Y.Z` and push; GitLab/GitHub Packages publishes ride their existing CI.
 
+### Relocking the dokka configurations (HEL-616)
+
+The `dokka*` configurations only resolve when a Dokka task executes, so
+`./gradlew dependencies --write-locks` leaves their lock entries stale — and the
+Html/Gfm/Jekyll variants cannot execute at all on the CVE-fixed classpath
+(Dokka 1.9.20's HTML plugin needs a `TypeFactory` constructor that jackson
+dropped after 2.18.8; only `dokkaJavadoc`, the published artifact, is
+compatible). After changing any dependency those configurations see, relock with
+
+```bash
+JAVA_HOME=~/.jdks/temurin-21 ./gradlew --write-locks resolveDokkaLocks dokkaJavadoc
+```
+
+(`--dependency-verification lenient` if the new artifacts are not yet in
+`gradle/verification-metadata.xml`), then let the GitLab `verification-metadata`
+job regenerate the metadata — never regenerate it locally.
+
 ### Already wired (no owner input needed)
 - POM completeness: `name`, `description`, `url`, `developers`, `scm`,
   `issueManagement` (Central-required fields) — verified in the published POM.
