@@ -31,6 +31,7 @@ consumer fixture that CI asserts.
 | Coordinate without distributed ACID | `pkgrovekit-saga` | coordination-api | jta, narayana, the data-access spine |
 | Stream datasets to/from **S3-compatible storage** | `pkgrovekit-storage-s3` | storage-api, AWS SDK `s3` (sync only) | dialects, jdbi, coordination, frameworks, MinIO SDK |
 | Write provider-neutral storage workflows/tests | `pkgrovekit-storage-api` | core (incl. `InMemoryObjectStore`) | **any** AWS SDK artifact, everything else |
+| Serve one operation on **REST and MCP** from one declaration | `pkgrovekit-operation-core` (+ `-rest` / `-mcp` / `-quarkus`) | nothing — core is zero-dependency | the data-access spine, Jackson, JAX-RS, any MCP runtime |
 
 **Recommended combinations:** `spring-boot-starter` + `postgres`; `quarkus` +
 `oracle`; `oracle` + `duckdb` for cross-engine copies; `jdbi` alone for
@@ -46,6 +47,11 @@ JDBC driver your deployment needs (every adapter keeps its driver `compileOnly`)
   depends only on `transfer` and discovers dialects at runtime via
   `SqlDialectProvider` — the framework stays `compileOnly` and never leaks onto
   a standard module. `spring ↛ quarkus` and `quarkus ↛ spring`.
+- **Operation layer (opt-in, orthogonal):** `operation-core` → `operation-rest`
+  / `operation-mcp` / `operation-quarkus`. One declaration per operation drives
+  the HTTP route, the MCP tool, the auth and the validation; surfaces are
+  declared, never implied, and a sensitive operation withheld from AI clients is
+  withheld structurally. Shares nothing with the data-access spine.
 - **Coordination (opt-in, orthogonal):** `coordination-api` → `jta` →
   `narayana` (distributed ACID), or `saga` (compensation). Strictly opt-in —
   JTA/Narayana/XA are **absent** from every standard module's runtime classpath
@@ -65,6 +71,13 @@ core                             coordination-api           spring-boot-starter 
      └─ jdbi (─ transfer)         core ─ storage-api ─ storage-s3 (AWS SDK v2)
                                   the spine NEVER depends on storage — database-
                                   only consumers resolve zero AWS SDK artifacts
+
+operation layer (opt-in)
+────────────────────────
+operation-core (ZERO deps) ─ operation-rest    (HTTP, framework-free)
+                           ├ operation-mcp     (MCP tools, runtime-free)
+                           └ operation-quarkus (CDI wiring, compileOnly)
+ no edge to core/jdbc: the operation layer shares no types with the spine
 ```
 
 The allowed edges live in a machine-readable map
@@ -79,6 +92,7 @@ enforced by `./gradlew assertModuleHierarchy` (see
 | [Getting started](docs/getting-started.md) | dependency setup, modules, first workflow |
 | [Dependency recipes](docs/scenarios.md) | the 9 scenarios above, in full |
 | [Object storage](docs/storage.md) | MinIO/Amazon S3 datasets, staging+manifest publish, checkpoints, capabilities |
+| [Operations: REST + MCP from one declaration](docs/operations.md) | the operation DSL, fail-closed surfaces, auth profiles, validation, idempotency, parity check |
 | [Workflow style](docs/workflow-style.md) | conventions, API tiers, fan-out/concurrency |
 | [Transformations](docs/transformations.md) | SQL vs row mapping vs batches vs ordered grouping |
 | [Transactions](docs/TRANSACTIONS.md) | outcomes, retries, checkpoints, policies |
@@ -189,6 +203,7 @@ artifact-level reference.
 |---|---|
 | [Dependency recipes](docs/scenarios.md) | the 9 scenarios in full: exact deps, present, absent, drivers |
 | [Object storage](docs/storage.md) | S3-compatible datasets, staging/publish, checkpoints, capability model (HEL-236) |
+| [Operation layer](docs/operations.md) | one declaration -> REST + MCP + auth + validation; fail-closed surface classification, Gallery descriptors, parity check (HEL-602) |
 | [Module hierarchy ADR](docs/adr/0003-module-hierarchy.md) · [allowed graph](gradle/allowed-dependencies.txt) | the enforced boundary + BOM design (HEL-235) |
 | [Transformations](docs/transformations.md) | decision guide: SQL vs row mapping vs batches vs ordered grouping |
 | [Transactions](docs/TRANSACTIONS.md) | outcomes, retries, checkpoints, policies |

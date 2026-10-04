@@ -101,6 +101,34 @@ every security run and before every publish.
   identifier gate, named-parameter non-interpolation, secret-free warnings
   (names only, never values), and redaction behavior — all regression-tested.
 
+## Library-provided application control: AI-surface exclusion (HEL-602)
+
+Everything above is about the supply chain. `pkgrovekit-operation-core` adds one
+control a CONSUMING application can inherit: an operation's reachability from an
+AI/MCP client is **declared**, and the declaration is enforced where it cannot
+be forgotten.
+
+- Every operation declares exactly one of `both` / `restOnly(reason)` /
+  `mcpOnly(reason)` / `internalOnly(reason)`. There is **no default** — an
+  undeclared surface fails registry construction, and under
+  `pkgrovekit-operation-quarkus` that is a **boot failure**, not a runtime
+  surprise.
+- `SurfacePolicy` refuses MCP exposure for risk categories
+  (`CREDENTIAL_ROTATION`, `PRIVILEGED_ADMIN`, `OAUTH_CALLBACK`,
+  `WEBHOOK_RECEIVER`, `BINARY_TRANSFER`) unless an explicit
+  `mcpOverride(reason = ...)` records why a human decided otherwise.
+- The MCP tool list is an **allow-list** derived from the declarations, so a
+  withheld operation has no tool name at all: `handles()` is false and `call()`
+  returns `not_found` without reaching a handler. The exclusion is structural
+  rather than a filter someone can forget to apply.
+- `registry.restOnlyExclusions()` and `ParityCheck` make the exclusions
+  reviewable and CI-assertable, including against a host's hand-written legacy
+  tool list during a migration.
+
+This is a control the library OFFERS; it binds a consumer only once they adopt
+the module. The proofs are in `docs/test-traceability.md` (HEL-602 section) and
+the usage is in `docs/operations.md`.
+
 ## Newly disclosed CVE in a published version
 
 1. The weekly scheduled scan (or Dependabot alert) surfaces it.

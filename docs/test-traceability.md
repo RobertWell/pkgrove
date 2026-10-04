@@ -136,6 +136,45 @@ both CIs.
 | Consumer dependency isolation (no AWS SDK for db-only users) | `assertModuleHierarchy` storage-leak check; consumer fixtures `jdbc-only`/`postgres-transfer` (`forbiddenGroups`) + `storage-s3` | — | — | PR | PASS |
 | Amazon S3 cloud smoke | `AmazonS3SmokeIT` — opt-in via `PKGROVEKIT_S3_SMOKE_BUCKET` + protected credentials (docs/storage.md); never in PR CI | I | AWS S3 | manual/release | OPT-IN |
 
+## HEL-602 — functional operation DSL (REST + MCP + auth + validation)
+
+Levels: **U**=unit (no container), **F**=real-framework (live Arc container in
+`integration-tests-quarkus`). No Docker is required for any row below.
+
+| Scenario | Test(s) | Level | Tier | State |
+|---|---|---|---|---|
+| The one-screen declaration produces the declared catalogue (read / idempotent write / restOnly / mcpOnly / internalOnly) | `OperationDslTest` (the issue's exact example, in `Fixtures.kt`) | U | PR | PASS |
+| Fail-closed classification: undeclared surface, doubly-declared surface, blank reason, duplicate id, duplicate REST binding, duplicate MCP tool, missing handler, missing codec, invalid id/tool/path, schema-vs-rule drift, REST path param absent from schema | `SurfaceClassificationTest` | U | PR | PASS |
+| Policy refuses a sensitive category on MCP; an explicit reasoned `mcpOverride` admits it; a blank override reason is refused | `SurfaceClassificationTest` | U | PR | PASS |
+| Registry immutability + lookups + exclusion/classification enumerations | `SurfaceClassificationTest` | U | PR | PASS |
+| Pipeline composition and ORDER (`audit -> authenticate -> decode -> validate -> authorizeOperation -> domainAuthorization -> idempotency -> handle`), extra stages, duplicate/empty rejection, handler-less pipeline | `PipelineTest` | U | PR | PASS |
+| Auth: wrong-shaped credential and rejected credential are `unauthenticated`; a surface with NO profile is unauthenticatable rather than open; roles satisfy scopes; missing scope is `forbidden` naming what is missing | `PipelineTest` | U | PR | PASS |
+| Idempotency: replay, per-operation key scoping, no replay for a failed call, no replay without a key | `PipelineTest` | U | PR | PASS |
+| Audit + metrics hooks invoked with SURFACE ATTRIBUTION for success, replay and failure (including an unattributable attempt); `audited(false)`/`metered(false)` suppress them; tracer wraps the call; duration comes from the injected clock | `PipelineTest` | U | PR | PASS |
+| Validation built-ins and their stable codes; non-`required` rules skip an absent value; cross-field rules; validation summary | `ValidationTest` | U | PR | PASS |
+| Dependency-free JSON parse/write + field-attributing accessors (the reason core needs no Jackson) | `JsonTest` | U | PR | PASS |
+| One shared error model: every `OperationError` code + HTTP status + wire envelope; the cause never reaches the wire | `ErrorsTest` | U | PR | PASS |
+| Path templates: parameter extraction, empty-segment refusal, percent-decoding, duplicate-parameter refusal (one implementation serves the registry check and the dispatcher) | `RestPathTemplateTest` | U | PR | PASS |
+| Gallery descriptors + JSON export + copyable DSL snippet + whole-catalogue export | `DescriptorTest` | U | PR | PASS |
+| `ParityCheck`: unregistered operation, duplicate tool, duplicate route, a WITHHELD operation appearing in a live MCP listing, missing-from-listing, tightened-policy preview | `ParityCheckTest` | U | PR | PASS |
+| REST adapter: routing, path/query/body merge with PATH precedence, 201 vs 200-on-replay, every error status, malformed body, percent-encoded segments, custom error envelope, audit attribution | `RestDispatcherTest` | U | PR | PASS |
+| **Security proof:** a REST_ONLY sensitive operation is absent from `toolsList()`, `handles()` is false under every plausible name, `call()` returns `not_found`, and the handler is NEVER invoked | `McpDispatcherTest`; `OperationSurfacesTest` (live container) | U,F | PR | PASS |
+| MCP adapter: tool descriptors + input schema, write/experimental hints an agent reads, blank/malformed arguments, scope and auth failures, replay, audit attribution, legacy-overlap fail-fast | `McpDispatcherTest` | U | PR | PASS |
+| Quarkus: registry assembled from CDI-discovered `OperationModule` beans; STARTUP check rejects an undeclared surface / duplicate tool / policy refusal naming the beans; ambiguous `SurfacePolicy` is a hard failure; configured refusal categories | `OperationRegistryProducerTest` | U | PR | PASS |
+| Framework-identity seam: ambient and host-extracted credential profiles, blank-subject refusal, audited-claim selection, internal-job scopes refusing remote surfaces | `QuarkusAuthProfilesTest` | U | PR | PASS |
+| **Real framework:** live Arc container produces the registry from CDI beans; REST and MCP present DIFFERENT credentials and route to ONE handler; each surface rejects the other's credential; validation output is byte-identical across surfaces; an idempotency key makes a cross-surface retry safe; the mcpOnly helper has no HTTP route; the parity check passes against the live tool listing; INTERNAL is not a scope bypass | `OperationSurfacesTest` | F | PR | PASS |
+
+### Honest limit on the boot-failure proof
+
+`OperationSurfacesTest` proves the startup bean REJECTS a bad catalogue inside
+the live container (the real `OperationRegistryProducer`, the real
+`Instance<OperationModule>`, plus one bad module), and that it names the
+operation and the contributing beans. It does **not** assert the JVM-exit half:
+asserting a *failed boot* needs `QuarkusUnitTest` from
+`quarkus-junit5-internal`, which this repository's version catalog and
+dependency-verification metadata do not cover. The container starting at all is
+itself the gate passing on the good catalogue.
+
 ## Honest gaps (tracked, NOT claimed complete)
 
 | Not-yet-covered scenario | Why | Disposition |
@@ -143,6 +182,7 @@ both CIs.
 | River executor task-payload/worker-loss tests | River integration is **not implemented** (the ADR keeps it allowed-but-gated). HEL-125 says: "Before River exists, use the deterministic test executor" — which `StructuredExecutorTest` does. | Out of scope until a River module exists. |
 | Literal 10-Oracle + 2-DuckDB multi-registration config | The *deterministic* multi-DB concurrency/ordering/leak assertions are covered by `DatabasesTest`/`StructuredExecutorTest` over fake+DuckDB registrations (the mechanics are DB-agnostic). The literal 10×Oracle real-container matrix is disproportionate (10× 5 GB Oracle Free containers) and adds no new *code path*. | Deferred; deterministic coverage stands in. Flagged for owner call. |
 | Scheduled **stress/soak tier** as a distinct CI schedule | Stress scenarios exist as tests (`LifecycleStressIT`, budget/concurrency) but run in the non-blocking `integration` job, not a separate scheduled tier. | Follow-up: add a scheduled workflow. Non-blocking for correctness. |
+| Operation-layer **JVM-exit boot failure** | Asserting a failed Quarkus boot requires `QuarkusUnitTest` (`quarkus-junit5-internal`), which is not in the version catalog or the generated dependency-verification metadata (owner directive: minimise new external artifacts). The startup BEAN's refusal is proven in the live container (`OperationSurfacesTest`), and a good catalogue booting is the positive half. | Deferred; add with the next metadata refresh if the owner wants the JVM-exit assertion. |
 | Slow-target **backpressure** dedicated assertion | `SlowTargetBackpressureIT`: slow sink throttles the source — rows materialized never lead the sink by more than one read batch (asserted at EVERY write step, live PG, 2k×10KB rows), plus coarse heap ceiling refuting whole-corpus buffering. Runs in the scheduled `stress-soak` CI tier. | DONE (HEL-129). |
 
 Rename note: the RowRelay→PkgroveKit rename + Maven-coordinate migration is tracked separately in **HEL-225** — not mixed into this test-matrix closure.

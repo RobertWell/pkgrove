@@ -5,6 +5,64 @@ All notable changes to PkgroveKit. Pre-stable: breaking changes may occur in any
 
 ## Unreleased
 
+- HEL-602: **functional operation DSL — one declaration, every surface.** Four
+  new opt-in modules. **`pkgrovekit-operation-core`** (ZERO runtime
+  dependencies, like `pkgrovekit-core`, and with no edge to it — the operation
+  layer shares no types with the data-access spine): an `operations { }` DSL
+  where one declaration carries an operation's stable id, READ/WRITE kind,
+  surfaces, required scopes, validation, idempotency key, handler and metadata;
+  **fail-closed surface classification** (every operation declares exactly one
+  of `both` / `restOnly(reason)` / `mcpOnly(reason)` / `internalOnly(reason)` —
+  there is no default, and an undeclared or doubly-declared surface, a blank
+  reason, a duplicate id/REST binding/MCP tool name, a missing handler or
+  codec, a REST path parameter absent from the declared input schema, or
+  validation rules that drifted from that schema all throw at CONSTRUCTION,
+  naming the offender and reporting every violation at once); a `SurfacePolicy`
+  over risk categories (`CREDENTIAL_ROTATION`, `PRIVILEGED_ADMIN`,
+  `OAUTH_CALLBACK`, `WEBHOOK_RECEIVER`, `BINARY_TRANSFER`, ...) that refuses MCP
+  exposure unless an explicit `mcpOverride(reason = ...)` says why; an immutable
+  `OperationRegistry` with lookups plus `classification()` /
+  `restOnlyExclusions()` / `exclusions()` enumerations for reviews and CI; a
+  composable functional pipeline (`audit -> authenticate -> decode -> validate ->
+  authorizeOperation -> domainAuthorization -> idempotency -> handle`) whose
+  stages are VALUES, with `AuditSink` / `MetricsSink` / `Tracer` /
+  `IdempotencyStore` / `DomainAuthorizer` hooks that have no-op defaults and
+  audit records carrying SOURCE ATTRIBUTION (surface + client + auth profile);
+  `AuthProfile`s that let REST and MCP present DIFFERENT credentials and produce
+  one `CallerContext`; a transport-neutral validation DSL (`required`,
+  `positive`, `nonNegative`, `scale(n)`, `isoCurrency`, `length`, `pattern`,
+  `oneOf`, `custom`, cross-field `rule`) and a closed `OperationError`
+  hierarchy adapters MAP rather than reinvent; Gallery `OperationDescriptor`s
+  (JSON-serialisable, with input/output JSON-Schema, validation summary,
+  capability flags and a COPYABLE DSL snippet) plus a whole-catalogue
+  `OperationCatalog` export; and a `ParityCheck` for CI.
+  **`pkgrovekit-operation-rest`** is a framework-free `RestDispatcher`
+  (`(method, path, headers, body) -> (status, body)`, body < query < PATH
+  precedence so a body cannot redirect a mutation, 201 on create but 200 on an
+  idempotent replay) — deliberately NO `jakarta.ws.rs` dependency, so the host
+  owns its resource classes. **`pkgrovekit-operation-mcp`** is a
+  transport-neutral MCP tool adapter that does NOT depend on any MCP server
+  runtime (the first consumer runs its own JSON-RPC 2.0 Streamable-HTTP server
+  at `/mcp`, protocol 2025-06-18): `toolsList()` is an ALLOW-LIST, so a
+  `restOnly`/`internalOnly` operation has no tool name, `handles()` is false and
+  `call()` returns `not_found` without reaching a handler, with errors carrying
+  the same semantic code/field/message as REST. **`pkgrovekit-operation-quarkus`**
+  wires the registry from CDI-discovered `OperationModule` beans and runs the
+  fail-closed check at STARTUP via the CDI-standard
+  `@Observes @Initialized(ApplicationScoped)` event (no `quarkus-core`
+  dependency), so a bad declaration FAILS THE BOOT; framework surfaces stay
+  `compileOnly`, and `IdentityClaims` is the four-line seam to a verified
+  `SecurityIdentity` — OAuth/JWT is NOT reimplemented. Docs:
+  [docs/operations.md](docs/operations.md).
+
+- HEL-602: the catalog's `cdi-api` moves 4.0.1 -> **4.1.0**, the version
+  `pkgrovekit-quarkus` has always COMPILED against (the Quarkus 3.21.1 platform
+  upgrades it, see that module's `gradle.lockfile`). A CDI adapter that declares
+  `cdi-api` WITHOUT `quarkus-agroal` resolved the catalog's 4.0.1 instead, whose
+  jar has no dependency-verification entry — the generated metadata only ever
+  saw 4.1.0. No lockfile or verification-metadata change results; every CDI
+  adapter is now on one API.
+
 ## 0.6.0 — 2026-08-11
 
 First release carrying the object-storage seam (HEL-236), the same-database
