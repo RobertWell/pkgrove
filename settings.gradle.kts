@@ -39,6 +39,8 @@ include(
     // zero-dependency; the three adapters are strictly opt-in and NEVER a
     // dependency of the data-access spine.
     "pkgrovekit-operation-core",
+    "pkgrovekit-operation-rest",
+    "pkgrovekit-operation-mcp",
     "integration-tests",
     "integration-tests-quarkus",
 )

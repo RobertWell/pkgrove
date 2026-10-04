@@ -33,5 +33,7 @@ dependencies {
         api(project(":pkgrovekit-storage-api"))
         api(project(":pkgrovekit-storage-s3"))
         api(project(":pkgrovekit-operation-core"))
+        api(project(":pkgrovekit-operation-rest"))
+        api(project(":pkgrovekit-operation-mcp"))
     }
 }

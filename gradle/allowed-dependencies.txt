@@ -74,3 +74,5 @@ pkgrovekit-spring-boot-starter -> pkgrovekit-transfer (api)
 # operation-core (api: its types are all over their public signatures); there
 # is deliberately NO adapter->adapter edge, so a REST-only host never resolves
 # the MCP adapter and vice versa.
+pkgrovekit-operation-rest -> pkgrovekit-operation-core (api)
+pkgrovekit-operation-mcp -> pkgrovekit-operation-core (api)
