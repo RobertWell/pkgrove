@@ -457,8 +457,13 @@ subprojects {
 // gate, RAISE the gate — never lower one to match a regression (that needs an
 // explicit owner-approved exception). Tool version is pinned so local and CI
 // runs measure with the same engine (0.8.11 = the Gradle 8.7 default).
-// The integration-test modules have no main sources — they are measurement
-// PRODUCERS only; their exec data feeds the aggregated report below.
+// The integration-test modules are measurement PRODUCERS only; their exec data
+// feeds the aggregated report below, and their own classes are never gated.
+// HEL-602 gave integration-tests-quarkus a src/main (the sample operation app
+// the live-Arc proof wires up), so "no main sources" is no longer true of it —
+// but it is still not a production module: `productionModules` selects on the
+// `pkgrovekit-` prefix, so neither the per-module gate nor the aggregated
+// report's classDirectories ever include test scaffolding.
 val productionModules = subprojects.filter { it.name.startsWith("pkgrovekit-") && it.name != bomModule }
 val criticalCoverageModules = setOf(
     "pkgrovekit-jdbc", "pkgrovekit-transfer", "pkgrovekit-jta", "pkgrovekit-coordination-api",
