@@ -431,17 +431,17 @@ class SurfaceClassificationTest {
     }
 
     @Test
-    fun `exposedOn lists only what each surface can reach`() {
+    fun `declaredFor lists the operations each adapter serves`() {
         val registry = sampleRegistry()
         assertEquals(
             listOf("plan.get", "actual.set", "admin.credentials.rotate"),
-            registry.exposedOn(Surface.REST).map { it.id },
+            registry.declaredFor(Surface.REST).map { it.id },
         )
         assertEquals(
             listOf("plan.get", "actual.set", "recommendation.explain"),
-            registry.exposedOn(Surface.MCP).map { it.id },
+            registry.declaredFor(Surface.MCP).map { it.id },
         )
-        assertEquals(listOf("plan.reindex"), registry.exposedOn(Surface.INTERNAL).map { it.id })
+        assertEquals(listOf("plan.reindex"), registry.declaredFor(Surface.INTERNAL).map { it.id })
     }
 
     @Test

@@ -183,20 +183,30 @@ class OperationDslTest {
     @Test
     fun `internalOnly operations are reachable only in process`() {
         val op = sampleRegistry().byId("plan.reindex")!!
-        assertTrue(op.exposedOn(Surface.INTERNAL))
-        assertFalse(op.exposedOn(Surface.REST))
-        assertFalse(op.exposedOn(Surface.MCP))
+        assertTrue(op.reachableFrom(Surface.INTERNAL))
+        assertFalse(op.reachableFrom(Surface.REST))
+        assertFalse(op.reachableFrom(Surface.MCP))
         assertNull(op.exposure.restBinding())
         assertNull(op.exposure.mcpBinding())
         assertEquals("batch job", op.exposure.reason)
     }
 
     @Test
+    fun `an in-process caller reaches even a restOnly operation`() {
+        // INTERNAL is a surface, not an authorization exemption: the scopes are
+        // still enforced by the pipeline (see OperationSurfacesTest).
+        val restOnly = sampleRegistry().byId("admin.credentials.rotate")!!
+        assertTrue(restOnly.reachableFrom(Surface.INTERNAL))
+        assertTrue(restOnly.reachableFrom(Surface.REST))
+        assertFalse(restOnly.reachableFrom(Surface.MCP))
+    }
+
+    @Test
     fun `a both-exposed operation is reachable on every surface`() {
         val op = sampleRegistry().byId("plan.get")!!
-        assertTrue(op.exposedOn(Surface.REST))
-        assertTrue(op.exposedOn(Surface.MCP))
-        assertTrue(op.exposedOn(Surface.INTERNAL))
+        assertTrue(op.reachableFrom(Surface.REST))
+        assertTrue(op.reachableFrom(Surface.MCP))
+        assertTrue(op.reachableFrom(Surface.INTERNAL))
         assertNull(op.exposure.reason)
     }
 

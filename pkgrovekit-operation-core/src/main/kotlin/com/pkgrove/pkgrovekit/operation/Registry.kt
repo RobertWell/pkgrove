@@ -38,8 +38,17 @@ public class OperationRegistry private constructor(
     /** Lookup by MCP tool name. */
     public fun byMcpTool(toolName: String): Operation<*, *>? = byMcpTool[toolName]
 
-    /** Operations reachable on [surface]. */
-    public fun exposedOn(surface: Surface): List<Operation<*, *>> = ordered.filter { surface in it.exposure.surfaces }
+    /**
+     * The operations that DECLARED [surface] — what a transport adapter for that
+     * surface serves.
+     *
+     * Not the same question as [Operation.reachableFrom]: `declaredFor(INTERNAL)`
+     * lists only the `internalOnly` operations, while an in-process caller can
+     * reach every operation. The adapters need this one; an authorization
+     * decision needs that one.
+     */
+    public fun declaredFor(surface: Surface): List<Operation<*, *>> =
+        ordered.filter { surface in it.exposure.surfaces }
 
     /** Every REST binding, in declaration order — what a host registers routes for. */
     public fun restBindings(): List<Pair<RestBinding, Operation<*, *>>> =

@@ -299,8 +299,19 @@ public class Operation<I, O> internal constructor(
     public val audited: Boolean,
     public val metered: Boolean,
 ) {
-    /** True when this operation is reachable on [surface]. */
-    public fun exposedOn(surface: Surface): Boolean =
+    /**
+     * True when a caller on [surface] can reach this operation.
+     *
+     * [Surface.INTERNAL] reaches EVERY operation, including a `restOnly` one: a
+     * batch job legitimately calls an admin operation, and "internal" means
+     * in-process, not remotely reachable. It is not an authorization bypass —
+     * the INTERNAL auth profile still has to produce a caller, and the declared
+     * scopes still have to be held (asserted by `OperationSurfacesTest`).
+     *
+     * Note the deliberate asymmetry with [OperationRegistry.declaredFor], which
+     * answers the different question "which operations DECLARED this surface".
+     */
+    public fun reachableFrom(surface: Surface): Boolean =
         surface == Surface.INTERNAL || surface in exposure.surfaces
 
     /** Whether an idempotency key can be derived from the input. */
