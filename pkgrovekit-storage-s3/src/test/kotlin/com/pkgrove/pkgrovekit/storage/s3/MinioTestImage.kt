@@ -1,5 +1,6 @@
 package com.pkgrove.pkgrovekit.storage.s3
 
+import com.github.dockerjava.api.exception.NotFoundException
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.images.builder.ImageFromDockerfile
 import org.testcontainers.utility.DockerImageName
@@ -45,11 +46,27 @@ object MinioTestImage {
 
     /** Builds the image if this daemon does not have it yet, then names it as a `minio/minio` substitute. */
     fun name(): DockerImageName {
-        val client = DockerClientFactory.instance().client()
-        val present = client.listImagesCmd().withImageNameFilter(NAME).exec().isNotEmpty()
-        if (!present) {
+        if (!present()) {
             ImageFromDockerfile(NAME, false).withFileFromString("Dockerfile", dockerfile).get()
         }
         return DockerImageName.parse(NAME).asCompatibleSubstituteFor("minio/minio")
+    }
+
+    /**
+     * Presence is asked with `inspect`, never with `listImages(filter=name)`: docker-java's
+     * `withImageNameFilter` sends the legacy `filter` query parameter, which current daemons
+     * ignore — the call then returns EVERY image, so on a CI daemon that already holds other
+     * Testcontainers images the build was skipped and the container start failed with
+     * `NotFoundException` (pipeline 2338, job 15660). A local daemon that already had the image
+     * hid the bug, which is why the build path must be verified from an empty daemon.
+     */
+    private fun present(): Boolean {
+        val client = DockerClientFactory.instance().client()
+        return try {
+            client.inspectImageCmd(NAME).exec()
+            true
+        } catch (_: NotFoundException) {
+            false
+        }
     }
 }

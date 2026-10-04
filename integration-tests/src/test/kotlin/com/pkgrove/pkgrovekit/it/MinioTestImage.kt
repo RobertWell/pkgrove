@@ -1,5 +1,6 @@
 package com.pkgrove.pkgrovekit.it
 
+import com.github.dockerjava.api.exception.NotFoundException
 import org.testcontainers.DockerClientFactory
 import org.testcontainers.images.builder.ImageFromDockerfile
 import org.testcontainers.utility.DockerImageName
@@ -29,11 +30,20 @@ object MinioTestImage {
     """.trimIndent()
 
     fun name(): DockerImageName {
-        val client = DockerClientFactory.instance().client()
-        val present = client.listImagesCmd().withImageNameFilter(NAME).exec().isNotEmpty()
-        if (!present) {
+        if (!present()) {
             ImageFromDockerfile(NAME, false).withFileFromString("Dockerfile", dockerfile).get()
         }
         return DockerImageName.parse(NAME).asCompatibleSubstituteFor("minio/minio")
+    }
+
+    /** `inspect`, not `listImages(filter=name)` — the legacy filter is ignored by current daemons (see the storage-s3 copy). */
+    private fun present(): Boolean {
+        val client = DockerClientFactory.instance().client()
+        return try {
+            client.inspectImageCmd(NAME).exec()
+            true
+        } catch (_: NotFoundException) {
+            false
+        }
     }
 }
