@@ -26,6 +26,10 @@ verification-metadata:
   stage: verify
   # same warm image the AuditPatchX backend job uses (JDK 21; wrapper supplies Gradle)
   image: maven:3.9-eclipse-temurin-21
+  # HEL-614: on the cold LAN runner the build reaches :pkgrovekit-storage-s3:test
+  # at ~40 min, and that suite now builds its MinIO image from the 111 MB GitHub
+  # release binary (~5 min on this link). Pipeline 2339 hit the 60 m default.
+  timeout: 120m
   # Docker is REQUIRED here, not optional. HEL-236 put MinIO testcontainer ITs
   # in :pkgrovekit-storage-s3:test — a published module's normal test task, which
   # the `-x :integration-tests:test` exclusion below never covered. Without a
@@ -37,7 +41,10 @@ verification-metadata:
   services:
     - name: docker:27-dind
       alias: docker
-      command: ["--dns", "8.8.8.8", "--dns", "8.8.4.4"]
+      # HEL-614: pull images through the LAN pull-through cache (hello-sre
+      # registry-mirror, fixed ClusterIP — dind has no cluster DNS), as hello-stock
+      # and hello-sre CI already do. Plain HTTP in-cluster, hence insecure-registry.
+      command: ["--dns", "8.8.8.8", "--dns", "8.8.4.4", "--registry-mirror", "http://10.152.183.230:5000", "--insecure-registry", "10.152.183.230:5000"]
       variables:
         DOCKER_TLS_CERTDIR: ""
   variables:
@@ -199,7 +206,10 @@ integration-oracle:
   services:
     - name: docker:27-dind
       alias: docker
-      command: ["--dns", "8.8.8.8", "--dns", "8.8.4.4"]
+      # HEL-614: pull images through the LAN pull-through cache (hello-sre
+      # registry-mirror, fixed ClusterIP — dind has no cluster DNS), as hello-stock
+      # and hello-sre CI already do. Plain HTTP in-cluster, hence insecure-registry.
+      command: ["--dns", "8.8.8.8", "--dns", "8.8.4.4", "--registry-mirror", "http://10.152.183.230:5000", "--insecure-registry", "10.152.183.230:5000"]
       variables:
         DOCKER_TLS_CERTDIR: ""
   variables:
@@ -281,7 +291,10 @@ stress-soak:
   services:
     - name: docker:27-dind
       alias: docker
-      command: ["--dns", "8.8.8.8", "--dns", "8.8.4.4"]
+      # HEL-614: pull images through the LAN pull-through cache (hello-sre
+      # registry-mirror, fixed ClusterIP — dind has no cluster DNS), as hello-stock
+      # and hello-sre CI already do. Plain HTTP in-cluster, hence insecure-registry.
+      command: ["--dns", "8.8.8.8", "--dns", "8.8.4.4", "--registry-mirror", "http://10.152.183.230:5000", "--insecure-registry", "10.152.183.230:5000"]
       variables:
         DOCKER_TLS_CERTDIR: ""
   variables:
