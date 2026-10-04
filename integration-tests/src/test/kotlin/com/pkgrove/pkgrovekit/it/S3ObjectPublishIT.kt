@@ -40,7 +40,7 @@ class S3ObjectPublishIT {
 
     @BeforeAll
     fun start() {
-        minio = GenericContainer("minio/minio:RELEASE.2025-04-22T22-12-26Z")
+        minio = GenericContainer(MinioTestImage.name())
             .withEnv("MINIO_ROOT_USER", "minioadmin")
             .withEnv("MINIO_ROOT_PASSWORD", "minioadmin")
             .withCommand("server", "/data")

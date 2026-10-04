@@ -40,10 +40,17 @@ the `jdbc-only` / `postgres-transfer` consumer fixtures.
 
 ## MinIO local development
 
+MinIO no longer publishes container images (Docker Hub `minio/minio` is gone,
+`quay.io/minio/minio` is unauthorized, `dl.min.io` archives answer 410 — HEL-614).
+The test suites therefore build `pkgrovekit/minio-test:RELEASE.2025-09-07T16-13-09Z`
+locally from the checksum-verified GitHub release binary (see
+`pkgrovekit-storage-s3/src/test/.../MinioTestImage.kt`); the same image serves
+local development once any test run has built it:
+
 ```bash
 docker run -d --name minio -p 9000:9000 -p 9001:9001 \
   -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin \
-  minio/minio:RELEASE.2025-09-07T16-13-09Z server /data --console-address ':9001'
+  pkgrovekit/minio-test:RELEASE.2025-09-07T16-13-09Z server /data --console-address ':9001'
 ```
 
 ```kotlin
@@ -207,8 +214,9 @@ plus `StorageLimits` part/object sizes). Workflows call
 `CheckpointStore`, `ObjectDataset` and `MultipartTransfer` all do this for you.
 
 - **Officially tested**: MinIO (Testcontainers, every CI run — pinned
-  `minio/minio:RELEASE.2025-09-07T16-13-09Z`) and Amazon S3 (opt-in smoke
-  test below).
+  `RELEASE.2025-09-07T16-13-09Z`, built from the GitHub release binary because
+  MinIO publishes no container images any more; prod runs
+  `RELEASE.2023-09-30T07-02-29Z`) and Amazon S3 (opt-in smoke test below).
 - **Expected compatible, not verified**: Cloudflare R2, Ceph RGW, Wasabi,
   Backblaze B2 S3 API, DigitalOcean Spaces. Start from
   `S3CompatibilityProfile.generic(name, capabilities)` and declare **only what

@@ -47,7 +47,7 @@ class StorageDatasetRoundTripIT {
     fun start() {
         pg = PostgreSQLContainer("postgres:16-alpine")
         pg.start()
-        minio = MinIOContainer("minio/minio:RELEASE.2025-09-07T16-13-09Z")
+        minio = MinIOContainer(MinioTestImage.name())
         minio.start()
 
         pgc = DriverManager.getConnection(pg.jdbcUrl, pg.username, pg.password)

@@ -5,6 +5,18 @@ All notable changes to PkgroveKit. Pre-stable: breaking changes may occur in any
 
 ## Unreleased
 
+- HEL-614: **MinIO test image is built from the GitHub release binary, not
+  pulled.** MinIO stopped publishing container images in 2025 — Docker Hub
+  `minio/minio` no longer exists, `quay.io/minio/minio` answers 401 and
+  `dl.min.io` answers 410 for every archive — which left the
+  `pkgrovekit-storage-s3` suite and two `integration-tests` ITs unable to start
+  their container and the nightly enforced build red from 2026-09-30. The
+  test-only `MinioTestImage` helper (one copy per test source set) now builds
+  `pkgrovekit/minio-test:RELEASE.2025-09-07T16-13-09Z` from the
+  checksum-verified `linux-amd64` release asset on alpine, once per Docker
+  daemon, and registers it as a `minio/minio` substitute for Testcontainers'
+  `MinIOContainer`. The stray `RELEASE.2025-04-22` pin in `S3ObjectPublishIT`
+  is unified on the same version. No runtime change, no new dependency.
 - HEL-602: **functional operation DSL — one declaration, every surface.** Four
   new opt-in modules. **`pkgrovekit-operation-core`** (ZERO runtime
   dependencies, like `pkgrovekit-core`, and with no edge to it — the operation

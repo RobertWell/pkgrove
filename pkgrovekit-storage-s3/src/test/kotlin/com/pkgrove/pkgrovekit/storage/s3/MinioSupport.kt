@@ -9,11 +9,13 @@ import java.util.concurrent.atomic.AtomicInteger
  * One MinIO container for the whole suite (started lazily, reaped by Ryuk).
  * MinIO is the officially tested S3-compatible target (HEL-236) — the SAME
  * AWS SDK client production uses talks to it, which is the compatibility
- * proof. Image pinned: capability claims (conditional writes, checksums) are
- * version-dependent facts, so the version under test must be explicit.
+ * proof. Version pinned: capability claims (conditional writes, checksums) are
+ * version-dependent facts, so the version under test must be explicit — see
+ * [MinioTestImage] for the pin and for why the image is built locally from the
+ * GitHub release binary rather than pulled (HEL-614).
  */
 object MinioSupport {
-    const val IMAGE = "minio/minio:RELEASE.2025-09-07T16-13-09Z"
+    const val IMAGE = MinioTestImage.NAME
 
     /**
      * Whether a Docker daemon is reachable. These ITs need a real MinIO
@@ -31,7 +33,7 @@ object MinioSupport {
     }
 
     val container: MinIOContainer by lazy {
-        MinIOContainer(IMAGE).also { it.start() }
+        MinIOContainer(MinioTestImage.name()).also { it.start() }
     }
 
     private val bucketSeq = AtomicInteger(0)
