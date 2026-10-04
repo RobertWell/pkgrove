@@ -65,3 +65,12 @@ pkgrovekit-storage-s3 -> pkgrovekit-storage-api (api)
 # quarkus !-> spring (no edge here means the check forbids it).
 pkgrovekit-quarkus -> pkgrovekit-transfer (api)
 pkgrovekit-spring-boot-starter -> pkgrovekit-transfer (api)
+
+# -- operation layer (strictly opt-in; never a dep of the spine) -------------
+# HEL-602: operation-core is zero-dependency (Kotlin stdlib only) and has NO
+# edge to pkgrovekit-core — the operation layer shares no types with the
+# data-access spine, and an edge would make every REST/MCP consumer resolve a
+# JDBC data model they never use. The three adapters each depend ONLY on
+# operation-core (api: its types are all over their public signatures); there
+# is deliberately NO adapter->adapter edge, so a REST-only host never resolves
+# the MCP adapter and vice versa.

@@ -32,5 +32,6 @@ dependencies {
         api(project(":pkgrovekit-spring-boot-starter"))
         api(project(":pkgrovekit-storage-api"))
         api(project(":pkgrovekit-storage-s3"))
+        api(project(":pkgrovekit-operation-core"))
     }
 }

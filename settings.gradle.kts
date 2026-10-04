@@ -34,6 +34,11 @@ include(
     // the consumer fixtures).
     "pkgrovekit-storage-api",
     "pkgrovekit-storage-s3",
+    // HEL-602: optional functional operation layer — one declaration per
+    // operation drives REST + MCP + auth + validation. operation-core is
+    // zero-dependency; the three adapters are strictly opt-in and NEVER a
+    // dependency of the data-access spine.
+    "pkgrovekit-operation-core",
     "integration-tests",
     "integration-tests-quarkus",
 )
