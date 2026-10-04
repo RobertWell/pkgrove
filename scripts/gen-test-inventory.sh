@@ -42,10 +42,31 @@ echo "generated $OUT: $total test methods"
 MATRIX="docs/test-traceability.md"
 if [[ -f "$MATRIX" ]]; then
   missing=0
+  # The inventory's class column, materialized ONCE into a file.
+  #
+  # This is not a micro-optimisation, it is the fix for a false-DRIFT race. The
+  # previous form was
+  #
+  #     if ! cut -d, -f2 "$OUT" | grep -qx "$cls"; then
+  #
+  # and this script runs under `set -o pipefail`. `grep -q` exits as soon as it
+  # matches, which SIGPIPEs `cut`, which makes the PIPELINE status 141 even
+  # though grep succeeded — so `! pipeline` is true and a class that plainly
+  # exists is reported as drift. It is a race (it depends on whether cut has
+  # finished writing), which is why the reported set varied between runs on an
+  # unchanged tree: observed 2026-10-04 reporting LifecycleStressIT /
+  # JdbiTransferTest / KeysAndCapabilitiesTest / NamedSqlTest / TransferSoakIT,
+  # all of which are present in source AND in the generated inventory.
+  #
+  # Reading from a FILE removes the pipeline, and with it the race.
+  CLASSES="$(mktemp)"
+  trap 'rm -f "$CLASSES"' EXIT
+  cut -d, -f2 "$OUT" | sort -u > "$CLASSES"
+
   # test CLASS tokens referenced in the matrix — only backtick-quoted class refs,
   # so prose words like the @ParameterizedTest/@Test annotations don't count.
   for cls in $(grep -oE '`[A-Z][A-Za-z0-9]*(Test|IT)`' "$MATRIX" | tr -d '`' | sort -u); do
-    if ! cut -d, -f2 "$OUT" | grep -qx "$cls"; then
+    if ! grep -qxF -- "$cls" "$CLASSES"; then
       echo "DRIFT: matrix references $cls but it has no tests in source" >&2
       missing=$((missing+1))
     fi

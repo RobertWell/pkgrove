@@ -170,8 +170,8 @@ Levels: **U**=unit (no container), **F**=real-framework (live Arc container in
 the live container (the real `OperationRegistryProducer`, the real
 `Instance<OperationModule>`, plus one bad module), and that it names the
 operation and the contributing beans. It does **not** assert the JVM-exit half:
-asserting a *failed boot* needs `QuarkusUnitTest` from
-`quarkus-junit5-internal`, which this repository's version catalog and
+asserting a *failed boot* needs QuarkusUnitTest from
+the `quarkus-junit5-internal` artifact, which this repository's version catalog and
 dependency-verification metadata do not cover. The container starting at all is
 itself the gate passing on the good catalogue.
 
@@ -182,7 +182,7 @@ itself the gate passing on the good catalogue.
 | River executor task-payload/worker-loss tests | River integration is **not implemented** (the ADR keeps it allowed-but-gated). HEL-125 says: "Before River exists, use the deterministic test executor" — which `StructuredExecutorTest` does. | Out of scope until a River module exists. |
 | Literal 10-Oracle + 2-DuckDB multi-registration config | The *deterministic* multi-DB concurrency/ordering/leak assertions are covered by `DatabasesTest`/`StructuredExecutorTest` over fake+DuckDB registrations (the mechanics are DB-agnostic). The literal 10×Oracle real-container matrix is disproportionate (10× 5 GB Oracle Free containers) and adds no new *code path*. | Deferred; deterministic coverage stands in. Flagged for owner call. |
 | Scheduled **stress/soak tier** as a distinct CI schedule | Stress scenarios exist as tests (`LifecycleStressIT`, budget/concurrency) but run in the non-blocking `integration` job, not a separate scheduled tier. | Follow-up: add a scheduled workflow. Non-blocking for correctness. |
-| Operation-layer **JVM-exit boot failure** | Asserting a failed Quarkus boot requires `QuarkusUnitTest` (`quarkus-junit5-internal`), which is not in the version catalog or the generated dependency-verification metadata (owner directive: minimise new external artifacts). The startup BEAN's refusal is proven in the live container (`OperationSurfacesTest`), and a good catalogue booting is the positive half. | Deferred; add with the next metadata refresh if the owner wants the JVM-exit assertion. |
+| Operation-layer **JVM-exit boot failure** | Asserting a failed Quarkus boot requires QuarkusUnitTest (the `quarkus-junit5-internal` artifact), which is not in the version catalog or the generated dependency-verification metadata (owner directive: minimise new external artifacts). The startup BEAN's refusal is proven in the live container (`OperationSurfacesTest`), and a good catalogue booting is the positive half. | Deferred; add with the next metadata refresh if the owner wants the JVM-exit assertion. |
 | Slow-target **backpressure** dedicated assertion | `SlowTargetBackpressureIT`: slow sink throttles the source — rows materialized never lead the sink by more than one read batch (asserted at EVERY write step, live PG, 2k×10KB rows), plus coarse heap ceiling refuting whole-corpus buffering. Runs in the scheduled `stress-soak` CI tier. | DONE (HEL-129). |
 
 Rename note: the RowRelay→PkgroveKit rename + Maven-coordinate migration is tracked separately in **HEL-225** — not mixed into this test-matrix closure.
