@@ -23,4 +23,8 @@ include(
     // AND (with the AWS-free assertions in jdbc-only/postgres-transfer) that
     // nobody else resolves the AWS SDK.
     "storage-s3",
+    // HEL-602: the operation layer is opt-in and DEPENDENCY-FREE; this fixture
+    // proves both from the consumer side (and the forbidden-module lines in
+    // jdbc-only/postgres-transfer prove a database-only consumer never gets it).
+    "operation-rest-mcp",
 )

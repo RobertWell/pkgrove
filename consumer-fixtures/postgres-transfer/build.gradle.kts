@@ -12,6 +12,10 @@ extra["forbiddenModules"] =
     "pkgrovekit-oracle,pkgrovekit-duckdb,pkgrovekit-jdbi," +
         "pkgrovekit-coordination-api,pkgrovekit-jta,pkgrovekit-narayana," +
         "pkgrovekit-saga,pkgrovekit-quarkus,pkgrovekit-spring-boot-starter," +
-        "pkgrovekit-storage-api,pkgrovekit-storage-s3"
+        "pkgrovekit-storage-api,pkgrovekit-storage-s3," +
+        // HEL-602: the operation layer is a disjoint tree — a database-only
+        // consumer must never resolve an API-surface model it did not select
+        "pkgrovekit-operation-core,pkgrovekit-operation-rest," +
+        "pkgrovekit-operation-mcp,pkgrovekit-operation-quarkus"
 // HEL-236: transfer WITHOUT storage resolves ZERO AWS SDK / MinIO artifacts
 extra["forbiddenGroups"] = "software.amazon.awssdk,io.minio"
