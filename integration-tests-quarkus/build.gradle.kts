@@ -11,6 +11,14 @@ dependencies {
     // same version the catalog pins for the quarkus plugin/extensions (3.21.1).
     implementation(enforcedPlatform("io.quarkus.platform:quarkus-bom:${libs.versions.quarkus.get()}"))
     implementation(project(":pkgrovekit-quarkus"))
+    // HEL-602: the operation layer's real-framework proof lives here too — a
+    // live Arc container assembling the registry from CDI-discovered
+    // OperationModule beans, with REST and MCP routed to one handler through
+    // DIFFERENT credentials. Both transport adapters are needed in ONE module
+    // to prove they agree; neither depends on the other.
+    implementation(project(":pkgrovekit-operation-quarkus"))
+    implementation(project(":pkgrovekit-operation-rest"))
+    implementation(project(":pkgrovekit-operation-mcp"))
     implementation(libs.quarkus.agroal)
     implementation(libs.quarkus.jdbc.h2)
     // Caller-owned JTA transactions for the JoinExisting proof (HEL-172):

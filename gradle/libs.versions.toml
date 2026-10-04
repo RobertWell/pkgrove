@@ -24,7 +24,14 @@ spring-boot = "3.5.15"
 awssdk = "2.51.3"
 spring = "6.2.19"
 quarkus = "3.21.1"
-cdi-api = "4.0.1"
+# 4.1.0, not 4.0.1 (HEL-602): the Quarkus 3.21.1 platform already upgrades the
+# CDI API to 4.1.0, so pkgrovekit-quarkus has always COMPILED against 4.1.0 (see
+# its gradle.lockfile) while the catalog named a version nothing resolved. A
+# module that declares cdi-api WITHOUT quarkus-agroal (pkgrovekit-operation-quarkus)
+# resolved the catalog's 4.0.1 instead, whose jar has no dependency-verification
+# entry — the generated metadata only ever saw 4.1.0. Naming the version that is
+# actually used keeps every CDI adapter on one API and needs no metadata refresh.
+cdi-api = "4.1.0"
 mp-config-api = "3.1"
 
 [libraries]

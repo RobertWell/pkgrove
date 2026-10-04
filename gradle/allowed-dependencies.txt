@@ -76,3 +76,4 @@ pkgrovekit-spring-boot-starter -> pkgrovekit-transfer (api)
 # the MCP adapter and vice versa.
 pkgrovekit-operation-rest -> pkgrovekit-operation-core (api)
 pkgrovekit-operation-mcp -> pkgrovekit-operation-core (api)
+pkgrovekit-operation-quarkus -> pkgrovekit-operation-core (api)

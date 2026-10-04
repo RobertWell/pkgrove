@@ -35,5 +35,6 @@ dependencies {
         api(project(":pkgrovekit-operation-core"))
         api(project(":pkgrovekit-operation-rest"))
         api(project(":pkgrovekit-operation-mcp"))
+        api(project(":pkgrovekit-operation-quarkus"))
     }
 }

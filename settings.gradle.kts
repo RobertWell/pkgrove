@@ -41,6 +41,7 @@ include(
     "pkgrovekit-operation-core",
     "pkgrovekit-operation-rest",
     "pkgrovekit-operation-mcp",
+    "pkgrovekit-operation-quarkus",
     "integration-tests",
     "integration-tests-quarkus",
 )
