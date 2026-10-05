@@ -5,6 +5,16 @@
 // runtime classpath. `verifyFixture` asserts both and records the full runtime
 // classpath to build/runtime-classpath.txt. This is how the module hierarchy is
 // proven from the CONSUMER side: a real downstream resolving real POMs.
+
+// HEL-602 follow-up: every fixture must resolve the version THIS tree builds, not a literal.
+// The literal "0.6.0" that the fixtures carried was satisfied by Maven Central, so the fixtures
+// were verifying the previous release instead of the mavenLocal artifacts the CI job had just
+// published; the moment a new module appeared (operation-*) the stale BOM had no entry for it.
+val pkgrovekitVersion: String = Regex("""val pkgrovekitRelease = "([^"]+)"""")
+    .find(rootDir.resolve("../build.gradle.kts").readText())?.groupValues?.get(1)
+    ?: error("could not read pkgrovekitRelease from ../build.gradle.kts")
+allprojects { extra["pkgrovekitVersion"] = pkgrovekitVersion }
+
 subprojects {
     apply(plugin = "java")
 

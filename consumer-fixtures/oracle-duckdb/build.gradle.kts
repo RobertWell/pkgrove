@@ -3,7 +3,7 @@
 // other's driver nor postgres. Drivers stay consumer-owned (ojdbc / duckdb_jdbc
 // are compileOnly in the adapters, so absent here).
 dependencies {
-    implementation(platform("com.pkgrove:pkgrovekit-bom:0.6.0"))
+    implementation(platform("com.pkgrove:pkgrovekit-bom:${project.extra["pkgrovekitVersion"]}"))
     implementation("com.pkgrove:pkgrovekit-oracle")
     implementation("com.pkgrove:pkgrovekit-duckdb")
 }

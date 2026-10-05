@@ -8,7 +8,7 @@
 // NOTHING else — no data-access spine, no Jackson, no JAX-RS, no MCP runtime,
 // no DI container.
 dependencies {
-    implementation(platform("com.pkgrove:pkgrovekit-bom:0.6.0"))
+    implementation(platform("com.pkgrove:pkgrovekit-bom:${project.extra["pkgrovekitVersion"]}"))
     implementation("com.pkgrove:pkgrovekit-operation-rest")
     implementation("com.pkgrove:pkgrovekit-operation-mcp")
 }
