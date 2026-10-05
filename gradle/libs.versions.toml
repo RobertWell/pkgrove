@@ -22,7 +22,7 @@ spring-boot = "3.5.15"
 # HEL-236: S3-compatible object storage adapter — AWS SDK for Java 2.x, s3
 # module only (never the full SDK BOM surface).
 awssdk = "2.51.3"
-spring = "6.2.19"
+spring = "7.0.9"
 quarkus = "3.21.1"
 # 4.1.0, not 4.0.1 (HEL-602): the Quarkus 3.21.1 platform already upgrades the
 # CDI API to 4.1.0, so pkgrovekit-quarkus has always COMPILED against 4.1.0 (see
