@@ -5,6 +5,10 @@ All notable changes to PkgroveKit. Pre-stable: breaking changes may occur in any
 
 ## Unreleased
 
+(nothing yet)
+
+## 0.7.0 — 2026-10-05
+
 - HEL-616: **security gate green again — Dokka's jackson and FreeMarker
   raised.** Trivy's HIGH/CRITICAL gate on `main` had been red since 2026-09-28:
   every module lockfile pinned `jackson-core` / `jackson-databind` 2.18.8
