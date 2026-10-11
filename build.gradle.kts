@@ -183,8 +183,8 @@ configure(subprojects.filter { it.name != bomModule }) {
             add("implementation", "org.apache.commons:commons-lang3") { version { require("3.18.0") } }
             // HEL-616: 2.18.11 clears CVE-2026-89407/89425 (core) and
             // CVE-2026-68497/91776/91777 (databind) on top of the 2.18.9 set.
-            add("implementation", "com.fasterxml.jackson.core:jackson-core") { version { require("2.18.11") } }
-            add("implementation", "com.fasterxml.jackson.core:jackson-databind") { version { require("2.18.11") } }
+            add("implementation", "com.fasterxml.jackson.core:jackson-core") { version { require("2.22.3") } }
+            add("implementation", "com.fasterxml.jackson.core:jackson-databind") { version { require("2.22.3") } }
             add("implementation", "org.apache.httpcomponents.client5:httpclient5") { version { require("5.6.3") } }
             add("implementation", "org.jsoup:jsoup") { version { require("1.23.1") } }
         }
@@ -762,8 +762,8 @@ configure(subprojects.filter { it.name.startsWith("pkgrovekit-") }) {
         // configurations, so the same dokka-scoped force is the whole fix.
         configurations.matching { it.name.startsWith("dokka") }.configureEach {
             resolutionStrategy {
-                force("com.fasterxml.jackson.core:jackson-core:2.18.11")
-                force("com.fasterxml.jackson.core:jackson-databind:2.18.11")
+                force("com.fasterxml.jackson.core:jackson-core:2.22.3")
+                force("com.fasterxml.jackson.core:jackson-databind:2.22.3")
                 force("org.freemarker:freemarker:2.3.35")
             }
         }
