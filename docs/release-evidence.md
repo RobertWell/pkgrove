@@ -27,7 +27,7 @@ absence of evidence is visible, never silent.
 
 | Evidence | Producer job | Artifact path | Retention |
 |---|---|---|---|
-| Release evidence (SHA → tests → coverage → gates) | GitHub `check` (`ci.yml`); GitLab `verification-metadata` | `build/release-evidence.md` in `check-reports` / `verification-metadata` | 30 days / 90 days |
+| Release evidence (SHA → tests → coverage → gates) | GitLab `verification-metadata` (GitHub `check` ended with the workflows, 2026-10-13) | `build/release-evidence.md` in `check-reports` / `verification-metadata` | 30 days / 90 days |
 | Unit+contract test reports, per-module + aggregated JaCoCo HTML/XML | GitHub `check` | `**/build/reports/tests/**`, `**/build/reports/jacoco/**` in `check-reports` | 30 days |
 | Changed-code coverage input (aggregated JaCoCo report) | GitLab `diff-coverage` | `build/reports/jacoco/jacocoAggregatedReport/` | 90 days |
 | Live-Postgres integration reports (blocking) | GitHub `integration-postgres` | `integration-tests/build/reports/tests/**` | 7 days |

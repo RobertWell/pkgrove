@@ -35,19 +35,21 @@ Local commands:
 ./gradlew :integration-tests:test                 # full container suite incl. Oracle-Free (resourced host)
 ```
 
-CI (`.github/workflows/ci.yml`): the `check` job enforces every gate above and
-uploads `**/build/reports/jacoco/**` as artifacts; `integration-postgres` is a
-**blocking** PR check. The **required, SHA-tied Oracle gate** is the GitLab
-`integration-oracle` job on the LAN self-hosted privileged runner
-(`.gitlab-ci.yml`, every push/MR, no allow_failure); the GitHub hosted-runner
-`integration-oracle` job stays informational only because that *runner* is
-flaky — the gate itself is not.
+CI is the LAN GitLab project `root/pkgrove` (`.gitlab-ci.yml`) — the ONE CI since
+2026-10-13 (owner: GitHub Actions removed). `verification-metadata` runs the full
+enforced build (`clean build publishToMavenLocal cyclonedxBom …`), which carries
+every per-module gate above; `diff-coverage` is merge-blocking; the **required,
+SHA-tied Oracle gate** is the `integration-oracle` job on the self-hosted
+privileged runner (every push/MR, no allow_failure); `cve-scan` is the Trivy
+gate over the locked graphs; `integration-postgres` runs the blocking
+Postgres/DuckDB container suite (`:integration-tests:postgresIntegrationTest`)
+that the removed GitHub `check`/`integration-postgres` jobs used to carry.
 
 ## Owner-mandated gates (HEL-234, 2026-08-09)
 
 | Gate | Threshold (FAILS below) | Where |
 |---|---|---|
-| Changed-code coverage | 80% of the coverable lines a change touched | `jacocoDiffCoverageCheck` — GitHub `check` (PR/push step), GitLab `diff-coverage` (merge-blocking) |
+| Changed-code coverage | 80% of the coverable lines a change touched | `jacocoDiffCoverageCheck` — GitLab `diff-coverage` (merge-blocking) |
 | Mutation score (PIT) | jdbc 60 / transfer 60 / coordination-api 70 / jta 70 % killed | `./gradlew mutationTest` — GitLab `mutation` (scheduled, threshold hard-fails) |
 | Live-Oracle integration | any test failure | GitLab `integration-oracle` (LAN runner, required per SHA) |
 | Soak leak/boundedness | lease/session/thread leak deltas, 256 MB post-GC heap ceiling, heap growth trend | `TransferSoakIT` (**S**) — GitLab `stress-soak` (scheduled, 12 min; trend CSV retained 365 days) |
@@ -120,7 +122,7 @@ both CIs.
 |---|---|---|---|---|---|
 | Dialect type/DDL/bind correctness (Oracle/PG/DuckDB) | `OracleDialectTest` (7); `PostgresDialectTest` (7); `DuckDbDialectTest` (8) | U | — | PR | PASS |
 | Identifier gate never echoes unsafe input | `ModelTest`: identifier gate validates and quotes without echoing bad names | U | — | PR | PASS |
-| Supply-chain / dependency verification | GitLab `verification-metadata` job (enforced build); GitHub `security.yml` (Trivy) | — | — | PR | PASS |
+| Supply-chain / dependency verification | GitLab `verification-metadata` job (enforced build); GitLab `cve-scan` (Trivy, ex-GitHub `security.yml`) | — | — | PR | PASS |
 
 ## HEL-236 — S3-compatible object storage
 

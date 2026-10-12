@@ -6,7 +6,7 @@ PkgroveKit publishes to three targets, all from the immutable-release version
 | Target | Reach | Auth to consume | Status |
 |---|---|---|---|
 | **LAN GitLab** Maven registry (`root/pkgrovekit`) | LAN only | none (anonymous) | **live** (`.gitlab-ci.yml`) |
-| **GitHub Packages** (`maven.pkg.github.com/RobertWell/pkgrove`) | public repo | token (`read:packages`) even for public | **live** (`publish.yml`) |
+| **GitHub Packages** (`maven.pkg.github.com/RobertWell/pkgrove`) | public repo | token (`read:packages`) even for public | **ended 2026-10-13** (GitHub workflows removed; last versions stay listed) — was (`publish.yml`) |
 | **Maven Central** | fully public | **none** | **LIVE — 0.3.0 published 2026-08-02** |
 
 ## Maven Central — the public, tokenless goal
@@ -67,7 +67,8 @@ zip POSTed to the Publisher API:
    (errors list names the exact file/problem).
 5. Verify a clean `mavenCentral()` consumer resolves it with no token
    (repo1.maven.org propagation lands within minutes of PUBLISHED).
-6. Tag `vX.Y.Z` and push; GitLab/GitHub Packages publishes ride their existing CI.
+6. Tag `vX.Y.Z` and push; the GitLab `publish-registry` job publishes to the LAN Maven
+   registry (GitHub Packages publishing ended with the GitHub workflows, 2026-10-13).
 
 ### Relocking the dokka configurations (HEL-616)
 

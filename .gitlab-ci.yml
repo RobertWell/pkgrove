@@ -1,4 +1,13 @@
-# PkgroveKit — GitLab CI (LAN mirror `root/pkgrovekit`; main-of-record is GitHub).
+# PkgroveKit — GitLab CI (`root/pkgrove`, the ONE CI; main-of-record stays GitHub for the code).
+#
+# 2026-10-13 (owner): GitHub Actions removed — "GitHub CI is expensive; that is why we established
+# GitLab". The gates the GitHub workflows carried now live here: `cve-scan` (the HEL-124 Trivy gate
+# over the locked graphs, blocking on HIGH/CRITICAL with the .trivyignore.yaml exception register,
+# every push/MR and the nightly schedule) and the CycloneDX SBOM (an artifact of
+# `verification-metadata`, which already runs cyclonedxBom). Not ported, by decision: CodeQL and
+# dependency-review (GitHub-only services), GitHub Packages publishing (consumers use this
+# project's Maven registry on the LAN and Maven Central for releases), Dependabot (its PRs had no
+# CI left to run; the nightly cve-scan is the signal for new advisories).
 #
 # HEL-124 (owner directive): verification-metadata.xml is generated INSIDE
 # GitLab CI, never locally. This job:
@@ -78,7 +87,65 @@ verification-metadata:
     paths:
       - gradle/verification-metadata.xml
       - build/release-evidence.md
+      - build/sbom/              # HEL-124 §7 CycloneDX SBOM (was the GitHub `sbom` job)
     expire_in: 90 days
+
+# HEL-124 CVE gate (moved from .github/workflows/security.yml, 2026-10-13): Trivy over the
+# committed lockfiles — the same input the old GitHub job scanned — blocking on HIGH/CRITICAL,
+# exceptions only through .trivyignore.yaml (mandatory expiry). Same shape as QuerySkiff's job:
+# `--offline-scan` (trivy resolving POMs from Central got 429 on the LAN link), the vuln DB from
+# hello-sre's daily mirror when the job token may reach it, live from ECR/ghcr otherwise; the
+# Java DB is not needed for lockfiles (no jars are read). A DB failure fails the job — a secure
+# failure, never a silent pass. The full-severity report is kept as an artifact.
+.trivy_dbs_from_mirror: &trivy_dbs_from_mirror
+  - |
+    set -e
+    ok=0; for attempt in 1 2 3; do apk add --no-cache -q curl python3 git >/dev/null 2>&1 && { ok=1; break; }; echo "apk attempt $attempt failed - retrying in 15s"; sleep 15; done; [ "$ok" = 1 ] || { echo "ERROR: apk could not install curl/python3/git after 3 attempts"; exit 2; }
+    rm -rf hello-sre && git init -q hello-sre && cd hello-sre
+    git -c credential.helper='!f() { echo username=gitlab-ci-token; echo "password=$CI_JOB_TOKEN"; }; f' fetch -q --depth 1 "http://gitlab.gitlab.svc.cluster.local/root/hello-sre.git" "$HELLO_SRE_REF"
+    git checkout -q FETCH_HEAD; [ "$(git rev-parse HEAD)" = "$HELLO_SRE_REF" ] || { echo "ERROR: hello-sre did not resolve to the pinned $HELLO_SRE_REF"; exit 2; }
+    cd "$CI_PROJECT_DIR"
+    . hello-sre/scripts/ci/trivy-db-fetch.sh
+    if fetch_trivy_dbs 0; then echo "--- trivy vuln DB from the hello-sre mirror"; echo "TRIVY_SKIP_DB_UPDATE=true" >> trivy-db.env
+    else echo "--- mirror unavailable: trivy downloads its DB live"; : > trivy-db.env; fi
+
+cve-scan:
+  stage: verify
+  needs: []
+  image:
+    name: aquasec/trivy:0.71.2
+    entrypoint: [""]
+  timeout: 30 minutes
+  variables:
+    TRIVY_DB_REPOSITORY: "public.ecr.aws/aquasecurity/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2"
+    TRIVY_CACHE_DIR: $CI_PROJECT_DIR/.trivycache
+    TRIVY_TIMEOUT: 20m
+    TRIVY_SKIP_VERSION_CHECK: "true"
+    TRIVY_SKIP_JAVA_DB_UPDATE: "true"
+    TRIVY_VERSION: "0.71.2"
+    HELLO_SRE_REF: "36354a6e59808b4b062f197815bc6fdc324ec9b0"
+  cache:
+    key: trivy-dbs
+    paths: [.trivycache]
+  script:
+    - trivy --version
+    - *trivy_dbs_from_mirror
+    - set -a; . ./trivy-db.env; set +a
+    - |
+      echo "=== blocking dependency scan over the locked graphs (HIGH/CRITICAL fail the gate; offline)"
+      trivy fs --offline-scan --scanners vuln --severity HIGH,CRITICAL --exit-code 1 \
+        --ignorefile .trivyignore.yaml --format table .
+  after_script:
+    - trivy fs --offline-scan --scanners vuln --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --exit-code 0 --ignorefile .trivyignore.yaml --format json --output trivy-full.json . || true
+    - trivy fs --offline-scan --scanners vuln --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --exit-code 0 --ignorefile .trivyignore.yaml --format table --output trivy-full.txt . || true
+  artifacts:
+    when: always
+    paths: [trivy-full.json, trivy-full.txt]
+    expire_in: 90 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH
 
 # HEL-235: architecture enforcement. `assertModuleHierarchy` fails the build on
 # any module-boundary violation (undeclared/mis-scoped edge, cycle,
@@ -244,6 +311,57 @@ integration-oracle:
 # because a full mutation analysis is prohibitive per-PR; MUTATION_TIER=1
 # allows manual proof pipelines. Reports are retained a year as the trend
 # record (docs/release-evidence.md documents locations).
+integration-postgres:
+  stage: verify
+  image: maven:3.9-eclipse-temurin-21
+  timeout: 60m
+  needs: []
+  tags:
+    - privileged
+  services:
+    - name: docker:27-dind
+      alias: docker
+      # HEL-614: pull images through the LAN pull-through cache (hello-sre
+      # registry-mirror, fixed ClusterIP — dind has no cluster DNS), as hello-stock
+      # and hello-sre CI already do. Plain HTTP in-cluster, hence insecure-registry.
+      command: ["--dns", "8.8.8.8", "--dns", "8.8.4.4", "--registry-mirror", "http://10.152.183.230:5000", "--insecure-registry", "10.152.183.230:5000"]
+      variables:
+        DOCKER_TLS_CERTDIR: ""
+  variables:
+    DOCKER_HOST: tcp://localhost:2375
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_DRIVER: overlay2
+    GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle-home"
+    GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx1g"
+  cache:
+    key: pkgrovekit-gradle
+    paths:
+      - .gradle-home/caches
+      - .gradle-home/wrapper
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "push"
+  script:
+    # the Postgres/DuckDB container suite (was the GitHub ci.yml `integration-postgres` job,
+    # moved here 2026-10-13 so the gate kept running after GitHub Actions were removed)
+    - ./gradlew --no-daemon --dependency-verification lenient :integration-tests:postgresIntegrationTest
+  artifacts:
+    when: always
+    paths:
+      - integration-tests/build/test-results/postgresIntegrationTest/
+      - integration-tests/build/reports/tests/postgresIntegrationTest/
+    reports:
+      junit: integration-tests/build/test-results/postgresIntegrationTest/TEST-*.xml
+    expire_in: 90 days
+
+# ── HEL-234 (owner mandate 2026-08-09): scheduled mutation gate ──────────────
+# PIT over the critical modules (jdbc/transfer/coordination-api/jta). The
+# per-module mutationThreshold in build.gradle.kts HARD-FAILS the pitest task —
+# and therefore this job — when too many mutants survive. Scheduled (nightly)
+# because a full mutation analysis is prohibitive per-PR; MUTATION_TIER=1
+# allows manual proof pipelines. Reports are retained a year as the trend
+# record (docs/release-evidence.md documents locations).
+
 mutation:
   stage: verify
   image: maven:3.9-eclipse-temurin-21

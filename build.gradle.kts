@@ -141,7 +141,7 @@ configure(subprojects.filter { it.name != bomModule }) {
     //                   GHSA-mhm7-754m-9p8w — one bump clears all three);
     //                   raised to 2.18.11 by HEL-616 (four HIGH, 2026-09/10)
     //   CVE-2026-64607  httpclient5    5.6.2  -> 5.6.3
-    //   CVE-2026-71497  jsoup          1.16.1 -> 1.23.1
+    //   CVE-2026-71497  jsoup          1.16.1 -> 1.23.1; CVE-2026-75140 (HIGH) -> 1.23.2
     //
     // All MEDIUM, which is why CI never blocked: security.yml gates at
     // HIGH,CRITICAL and reports the rest non-blocking. That gate is correct and
@@ -173,7 +173,8 @@ configure(subprojects.filter { it.name != bomModule }) {
     //   CVE-2025-48924  commons-lang3    (dokka* + pitest)
     //   CVE-2026-54515 / CVE-2026-59889 / GHSA-mhm7-754m-9p8w
     //                   jackson-databind (dokka* only)
-    //   CVE-2026-71497  jsoup            (dokka* only)
+    //   CVE-2026-71497  jsoup            (dokka* only) — superseded 2026-10-13: jsoup is now
+    //                   FORCED to 1.23.2 in dokka* (CVE-2026-75140 is HIGH; see the dokka block)
     // Verified per coordinate against every lockfile: outside those
     // configurations they do not appear, so no consumer resolves them. Revisit
     // when Dokka updates — a force here disappears the day it does.
@@ -186,7 +187,7 @@ configure(subprojects.filter { it.name != bomModule }) {
             add("implementation", "com.fasterxml.jackson.core:jackson-core") { version { require("2.18.11") } }
             add("implementation", "com.fasterxml.jackson.core:jackson-databind") { version { require("2.18.11") } }
             add("implementation", "org.apache.httpcomponents.client5:httpclient5") { version { require("5.6.3") } }
-            add("implementation", "org.jsoup:jsoup") { version { require("1.23.1") } }
+            add("implementation", "org.jsoup:jsoup") { version { require("1.23.2") } }   // CVE-2026-75140 (HIGH)
         }
     }
 
@@ -765,6 +766,11 @@ configure(subprojects.filter { it.name.startsWith("pkgrovekit-") }) {
                 force("com.fasterxml.jackson.core:jackson-core:2.18.11")
                 force("com.fasterxml.jackson.core:jackson-databind:2.18.11")
                 force("org.freemarker:freemarker:2.3.35")
+                // 2026-10-13: Dokka's jsoup 1.16.1 gained a HIGH (CVE-2026-75140, DoS on deeply
+                // nested XML; fixed 1.23.2) — the first HIGH in a dokka* configuration, so the
+                // "accepted, build-tooling only" note above no longer holds for jsoup. Same
+                // dokka-scoped force; dokkaJavadoc proven on the forced classpath by the relock.
+                force("org.jsoup:jsoup:1.23.2")
             }
         }
         // HEL-616: the dokka* configurations resolve only when a dokka task
