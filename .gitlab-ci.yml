@@ -94,20 +94,28 @@ verification-metadata:
 # committed lockfiles — the same input the old GitHub job scanned — blocking on HIGH/CRITICAL,
 # exceptions only through .trivyignore.yaml (mandatory expiry). Same shape as QuerySkiff's job:
 # `--offline-scan` (trivy resolving POMs from Central got 429 on the LAN link), the vuln DB from
-# hello-sre's daily mirror when the job token may reach it, live from ECR/ghcr otherwise; the
-# Java DB is not needed for lockfiles (no jars are read). A DB failure fails the job — a secure
-# failure, never a silent pass. The full-severity report is kept as an artifact.
+# hello-sre's daily mirror when the job token may reach it, live from ECR/ghcr otherwise, never
+# from a cache; the Java DB is not needed for lockfiles (no jars are read). A DB failure fails the
+# job — a secure failure, never a silent pass. The full-severity report is kept as an artifact.
 .trivy_dbs_from_mirror: &trivy_dbs_from_mirror
   - |
     set -e
     ok=0; for attempt in 1 2 3; do apk add --no-cache -q curl python3 git >/dev/null 2>&1 && { ok=1; break; }; echo "apk attempt $attempt failed - retrying in 15s"; sleep 15; done; [ "$ok" = 1 ] || { echo "ERROR: apk could not install curl/python3/git after 3 attempts"; exit 2; }
+    : > trivy-db.env
+    # The mirror needs THIS project on hello-sre's CI job-token allowlist (Settings > CI/CD > Token
+    # Access of root/hello-sre); without it the fetch is refused and the scan uses the live DB from
+    # ECR/ghcr instead (~60 s on this link, pipeline 2489). Either way the DB is fresh for this run:
+    # nothing is cached between pipelines, so no earlier pipeline can hand this gate a tampered DB.
     rm -rf hello-sre && git init -q hello-sre && cd hello-sre
-    git -c credential.helper='!f() { echo username=gitlab-ci-token; echo "password=$CI_JOB_TOKEN"; }; f' fetch -q --depth 1 "http://gitlab.gitlab.svc.cluster.local/root/hello-sre.git" "$HELLO_SRE_REF"
-    git checkout -q FETCH_HEAD; [ "$(git rev-parse HEAD)" = "$HELLO_SRE_REF" ] || { echo "ERROR: hello-sre did not resolve to the pinned $HELLO_SRE_REF"; exit 2; }
-    cd "$CI_PROJECT_DIR"
-    . hello-sre/scripts/ci/trivy-db-fetch.sh
-    if fetch_trivy_dbs 0; then echo "--- trivy vuln DB from the hello-sre mirror"; echo "TRIVY_SKIP_DB_UPDATE=true" >> trivy-db.env
-    else echo "--- mirror unavailable: trivy downloads its DB live"; : > trivy-db.env; fi
+    if git -c credential.helper='!f() { echo username=gitlab-ci-token; echo "password=$CI_JOB_TOKEN"; }; f' fetch -q --depth 1 "http://gitlab.gitlab.svc.cluster.local/root/hello-sre.git" "$HELLO_SRE_REF" 2>/dev/null \
+       && git checkout -q FETCH_HEAD && [ "$(git rev-parse HEAD)" = "$HELLO_SRE_REF" ]; then
+      cd "$CI_PROJECT_DIR"
+      . hello-sre/scripts/ci/trivy-db-fetch.sh
+      if fetch_trivy_dbs 0; then echo "--- trivy vuln DB from the hello-sre mirror (sha256-verified)"; echo "TRIVY_SKIP_DB_UPDATE=true" >> trivy-db.env
+      else echo "--- mirror unavailable: trivy downloads its DB live"; fi
+    else
+      cd "$CI_PROJECT_DIR"; echo "--- hello-sre not readable with this job token (allowlist): trivy downloads its DB live"
+    fi
 
 cve-scan:
   stage: verify
@@ -124,9 +132,8 @@ cve-scan:
     TRIVY_SKIP_JAVA_DB_UPDATE: "true"
     TRIVY_VERSION: "0.71.2"
     HELLO_SRE_REF: "36354a6e59808b4b062f197815bc6fdc324ec9b0"
-  cache:
-    key: trivy-dbs
-    paths: [.trivycache]
+  # no cache: the DB is fetched fresh every run (mirror or live) — a shared cache would let any
+  # earlier pipeline of the project feed this gate a stale or tampered database
   script:
     - trivy --version
     - *trivy_dbs_from_mirror
