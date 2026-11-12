@@ -1,0 +1,5 @@
+# HEL-841: known gitleaks findings, by exact fingerprint (scripts/ci/secret-scan.sh). The 11-12 full-history audit of
+# this repo (every branch) found none, so nothing is listed. A NEW finding fails the job; a real credential is
+# rotated, not added here.
+# tree (file:rule:line)
+# history (commit:file:rule:line)
