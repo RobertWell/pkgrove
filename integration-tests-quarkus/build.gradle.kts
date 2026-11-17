@@ -39,5 +39,8 @@ dependencies {
 configurations.configureEach {
     resolutionStrategy {
         force("org.codehaus.plexus:plexus-utils:3.6.1")
+        // CVE-2026-102554 (HIGH, 2026-11-16 rescan): the same BOM resolves guava 33.4.6-jre on the
+        // test classpaths; fixed in 33.7.2. Test-only module, never published. Drop with the BOM bump.
+        force("com.google.guava:guava:33.7.2-jre")
     }
 }
